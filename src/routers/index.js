@@ -1,5 +1,6 @@
-const statusRoute = require('./status');
+const statusRouter = require('./statusRouter');
 
+// Cada recurso fica em um router próprio, com o seu prefixo de URL
 module.exports = (app) => {
-  statusRoute(app);
+  app.use('/', statusRouter);
 }
