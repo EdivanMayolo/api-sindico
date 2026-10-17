@@ -1,4 +1,9 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Colunas DATE (código 1082 no PostgreSQL) voltam como texto 'AAAA-MM-DD'.
+// Sem isso, o pg cria um Date com hora e fuso ('2026-01-01T03:00:00.000Z'),
+// e a data pode até aparecer como o dia anterior no frontend.
+types.setTypeParser(1082, (valor) => valor);
 
 const pool = new Pool({
   user: process.env.POSTGRES_USER,
