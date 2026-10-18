@@ -5,6 +5,10 @@ const { Pool, types } = require('pg');
 // e a data pode até aparecer como o dia anterior no frontend.
 types.setTypeParser(1082, (valor) => valor);
 
+// Colunas DECIMAL/NUMERIC (código 1700) voltam como número (300.00 → 300),
+// e não como texto ("300.00"). Os cálculos de dinheiro são feitos em centavos.
+types.setTypeParser(1700, (valor) => parseFloat(valor));
+
 const pool = new Pool({
   user: process.env.POSTGRES_USER,
   host: process.env.POSTGRES_HOST,

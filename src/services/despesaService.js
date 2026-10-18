@@ -1,0 +1,197 @@
+const db = require('../configs');
+const ErroApi = require('../utils/ErroApi');
+const { textoOuNulo } = require('../utils/texto');
+
+// Colunas devolvidas em todas as consultas de despesa.
+// A despesa é cobrada na fatura do MÊS SEGUINTE ao da data_referencia
+// (gasto de junho → fatura de julho): mes_cobranca e ano_cobranca.
+const COLUNAS = `id_despesa, descricao, tipo_despesa, valor_total, valor_m3,
+                 data_referencia, observacao, ativo,
+                 EXTRACT(MONTH FROM data_referencia + INTERVAL '1 month')::INT AS mes_cobranca,
+                 EXTRACT(YEAR  FROM data_referencia + INTERVAL '1 month')::INT AS ano_cobranca`;
+
+// Valida os campos obrigatórios e devolve os valores na ordem do INSERT/UPDATE.
+// tipo_despesa, valor > 0 e valor_m3 só em VARIAVEL são conferidos pelo banco (ck_).
+const prepararDados = ({ descricao, tipo_despesa, valor_total, valor_m3, data_referencia, observacao }) => {
+  if (!textoOuNulo(descricao) || !tipo_despesa || valor_total === undefined || valor_total === null || !data_referencia) {
+    throw new ErroApi(400, 'Informe a descrição, o tipo, o valor total e a data de referência da despesa.');
+  }
+  return [textoOuNulo(descricao), tipo_despesa, valor_total, valor_m3 ?? null, data_referencia, textoOuNulo(observacao)];
+};
+
+// Onde a despesa já foi usada:
+//   itens_validos    → cobrada em fatura que vale (não cancelada)
+//   itens_cancelados → só aparece em faturas canceladas
+//   leituras         → despesa de gás com leituras lançadas
+const verificarUso = async (id) => {
+  const sql = `SELECT (SELECT COUNT(*)
+                         FROM T_ITEM_FATURA A, T_FATURA B
+                        WHERE A.id_fatura  = B.id_fatura
+                          AND A.id_despesa = $1
+                          AND B.status    <> 'CANCELADA') AS itens_validos,
+                      (SELECT COUNT(*)
+                         FROM T_ITEM_FATURA A, T_FATURA B
+                        WHERE A.id_fatura  = B.id_fatura
+                          AND A.id_despesa = $1
+                          AND B.status     = 'CANCELADA') AS itens_cancelados,
+                      (SELECT COUNT(*)
+                         FROM T_LEITURA_GAS
+                        WHERE id_despesa = $1) AS leituras`;
+  const uso = (await db.query(sql, [id])).rows[0];
+  return {
+    itensValidos: Number(uso.itens_validos),
+    itensCancelados: Number(uso.itens_cancelados),
+    leituras: Number(uso.leituras)
+  };
+};
+
+// Filtros opcionais: ?mes=&ano= (da data_referencia), ?tipo_despesa=, ?ativo=
+const listar = async ({ mes, ano, tipo_despesa, ativo } = {}) => {
+  if (mes !== undefined && !(Number(mes) >= 1 && Number(mes) <= 12)) {
+    throw new ErroApi(400, 'O mês deve estar entre 1 e 12.');
+  }
+  const sql = `SELECT ${COLUNAS}
+                 FROM T_DESPESA
+                WHERE ($1::INT     IS NULL OR EXTRACT(MONTH FROM data_referencia) = $1)
+                  AND ($2::INT     IS NULL OR EXTRACT(YEAR  FROM data_referencia) = $2)
+                  AND ($3::VARCHAR IS NULL OR tipo_despesa = $3)
+                  AND ($4::BOOLEAN IS NULL OR ativo = $4)
+                ORDER BY data_referencia DESC, descricao`;
+  const result = await db.query(sql, [mes, ano, tipo_despesa, ativo]);
+  return result.rows;
+};
+
+const buscarPorId = async (id) => {
+  const sql = `SELECT ${COLUNAS}
+                 FROM T_DESPESA
+                WHERE id_despesa = $1`;
+  const result = await db.query(sql, [id]);
+  if (result.rowCount === 0) {
+    throw new ErroApi(404, 'Despesa não encontrada.');
+  }
+  return result.rows[0];
+};
+
+const criar = async (dados = {}) => {
+  const sql = `INSERT INTO T_DESPESA (descricao, tipo_despesa, valor_total, valor_m3, data_referencia, observacao)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               RETURNING ${COLUNAS}`;
+  const result = await db.query(sql, prepararDados(dados));
+  return result.rows[0];
+};
+
+// Despesa já cobrada em fatura (não cancelada) ou com leituras de gás:
+// só a descrição e a observação podem mudar. Para corrigir o valor,
+// cancelar a fatura e gerar de novo.
+const alterar = async (id, dados = {}) => {
+  const valores = prepararDados(dados);
+  const atual = await buscarPorId(id);
+  const uso = await verificarUso(id);
+
+  if (uso.itensValidos > 0 || uso.leituras > 0) {
+    const mudouValor = atual.tipo_despesa !== valores[1]
+      || atual.valor_total !== Number(valores[2])
+      || atual.valor_m3 !== (valores[3] === null ? null : Number(valores[3]))
+      || atual.data_referencia !== valores[4];
+    if (mudouValor) {
+      throw new ErroApi(409, 'Despesa já lançada em fatura ou com leituras de gás: só a descrição e a observação podem ser alteradas.');
+    }
+  }
+
+  const sql = `UPDATE T_DESPESA
+                  SET descricao       = $1,
+                      tipo_despesa    = $2,
+                      valor_total     = $3,
+                      valor_m3        = $4,
+                      data_referencia = $5,
+                      observacao      = $6
+                WHERE id_despesa = $7
+            RETURNING ${COLUNAS}`;
+  const result = await db.query(sql, [...valores, id]);
+  return result.rows[0];
+};
+
+// RF8/RF9 pedem "excluir". Para o saldo do caixa não ficar errado:
+//   - cobrada em fatura válida ou com leituras → não deixa
+//   - só em faturas canceladas                 → apenas inativa (sai do saldo)
+//   - nunca usada                              → exclui de verdade
+const excluir = async (id) => {
+  await buscarPorId(id);
+  const uso = await verificarUso(id);
+
+  if (uso.itensValidos > 0) {
+    throw new ErroApi(409, 'Despesa já lançada em fatura. Cancele a fatura antes de excluir a despesa.');
+  }
+  if (uso.leituras > 0) {
+    throw new ErroApi(409, 'Despesa de gás com leituras lançadas. Exclua as leituras antes de excluir a despesa.');
+  }
+  if (uso.itensCancelados > 0) {
+    await db.query('UPDATE T_DESPESA SET ativo = FALSE WHERE id_despesa = $1', [id]);
+    return 'A despesa aparece em faturas canceladas e foi inativada.';
+  }
+
+  await db.query('DELETE FROM T_DESPESA WHERE id_despesa = $1', [id]);
+  return 'Despesa excluída.';
+};
+
+// Divide o valor igualmente (RN07). A conta é feita em centavos para não
+// perder dinheiro com arredondamento: cada apto paga a parte inteira e o
+// ÚLTIMO da lista recebe a diferença, para a soma bater com o total.
+// Ex.: R$ 100,00 / 3 → 33,33 + 33,33 + 33,34
+// Exportada para ser usada também na geração das faturas (parte 6).
+const calcularRateio = (valorTotal, apartamentos) => {
+  const totalCentavos = Math.round(valorTotal * 100);
+  const parteCentavos = Math.floor(totalCentavos / apartamentos.length);
+  const ultimo = apartamentos.length - 1;
+
+  return apartamentos.map((apto, i) => {
+    const centavos = i === ultimo ? totalCentavos - parteCentavos * ultimo : parteCentavos;
+    return { ...apto, valor: centavos / 100 };
+  });
+};
+
+const listarApartamentosAtivos = async () => {
+  const sql = `SELECT id_apartamento, numero, bloco
+                 FROM T_APARTAMENTO
+                WHERE ativo = TRUE
+                ORDER BY bloco, numero`;
+  return (await db.query(sql)).rows;
+};
+
+// Prévia do rateio (não grava nada): quanto cada apartamento ativo vai pagar.
+// Os itens de fatura são gravados na geração das faturas (parte 6).
+const previaRateio = async (id) => {
+  const despesa = await buscarPorId(id);
+  if (despesa.valor_m3 !== null) {
+    throw new ErroApi(400, 'Despesa de gás não é rateada: cada apartamento paga o próprio consumo (leituras de gás).');
+  }
+  if (!despesa.ativo) {
+    throw new ErroApi(400, 'Despesa inativa não é rateada.');
+  }
+
+  const apartamentos = await listarApartamentosAtivos();
+  if (apartamentos.length === 0) {
+    throw new ErroApi(400, 'Não há apartamentos ativos para ratear a despesa.');
+  }
+
+  return {
+    id_despesa: despesa.id_despesa,
+    descricao: despesa.descricao,
+    valor_total: despesa.valor_total,
+    mes_cobranca: despesa.mes_cobranca,
+    ano_cobranca: despesa.ano_cobranca,
+    quantidade_apartamentos: apartamentos.length,
+    apartamentos: calcularRateio(despesa.valor_total, apartamentos)
+  };
+};
+
+module.exports = {
+  listar,
+  buscarPorId,
+  criar,
+  alterar,
+  excluir,
+  calcularRateio,
+  listarApartamentosAtivos,
+  previaRateio
+};
