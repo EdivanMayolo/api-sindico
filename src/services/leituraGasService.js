@@ -43,12 +43,24 @@ const buscarPorId = async (id) => {
   return result.rows[0];
 };
 
-// Painel da tela de leitura de uma despesa de gás: todos os apartamentos
-// ativos, em ordem, com a leitura deste mês (se já lançada) e a última
-// leitura finalizada (que será a leitura anterior, bloqueada no Quasar).
+// Aptos que fazem parte da leitura de um mês, em ordem (bloco, número).
+// Virada de mês: o apto só entra se foi cadastrado ATÉ o dia em que as
+// leituras daquele mês começaram (inicioLeituras). Cadastrado depois, entra
+// no mês seguinte. Mês ainda não começado (inicioLeituras null): todos.
+const listarAptosDoMes = async (inicioLeituras) => {
+  const sql = `SELECT id_apartamento, numero, bloco, data_cadastro
+                 FROM T_APARTAMENTO
+                WHERE ativo = TRUE
+                  AND ($1::DATE IS NULL OR data_cadastro <= $1)
+                ORDER BY bloco, numero`;
+  return (await db.query(sql, [inicioLeituras])).rows;
+};
+
+// Painel da tela de leitura de uma despesa de gás: os apartamentos do mês,
+// em ordem, com a leitura deste mês (se já lançada) e a última leitura
+// finalizada (que será a leitura anterior, bloqueada no Quasar).
 const painel = async (idDespesa) => {
   const despesa = await buscarDespesaGas(idDespesa);
-  const apartamentos = await despesaService.listarApartamentosAtivos();
 
   const leituras = (await db.query(
     `SELECT ${COLUNAS}
@@ -57,6 +69,12 @@ const painel = async (idDespesa) => {
         AND A.id_despesa     = $1`,
     [idDespesa]
   )).rows;
+
+  // Dia em que as leituras deste mês começaram (a mais antiga)
+  const inicioLeituras = leituras.length > 0
+    ? leituras.map((l) => l.data_leitura).sort()[0]
+    : null;
+  const apartamentos = await listarAptosDoMes(inicioLeituras);
 
   // Última leitura finalizada de cada apto em OUTRAS despesas (mesma ordem da trigger)
   const ultimas = (await db.query(
@@ -91,6 +109,7 @@ const painel = async (idDespesa) => {
     descricao: despesa.descricao,
     data_referencia: despesa.data_referencia,
     valor_m3: despesa.valor_m3,
+    inicio_leituras: inicioLeituras,
     total_apartamentos: lista.length,
     total_finalizadas: finalizadas.length,
     completa: lista.length > 0 && finalizadas.length === lista.length,
@@ -106,8 +125,12 @@ const painel = async (idDespesa) => {
 // Regras de calendário (entre meses), conferidas antes de lançar uma leitura.
 // iniciandoMes = a despesa ainda não tem nenhuma leitura (é a 1ª do mês).
 const validarMes = async (despesa, iniciandoMes) => {
-  const totalAptos = (await despesaService.listarApartamentosAtivos()).length;
+  // aptos_do_mes: aptos ativos cadastrados até o 1º dia de leitura daquele mês
   const sql = `SELECT D.id_despesa, D.data_referencia,
+                      (SELECT COUNT(*) FROM T_APARTAMENTO P
+                        WHERE P.ativo = TRUE
+                          AND P.data_cadastro <= (SELECT MIN(A.data_leitura) FROM T_LEITURA_GAS A
+                                                   WHERE A.id_despesa = D.id_despesa)) AS aptos_do_mes,
                       (SELECT COUNT(*) FROM T_LEITURA_GAS A
                         WHERE A.id_despesa = D.id_despesa) AS leituras,
                                     (SELECT COUNT(*) FROM T_LEITURA_GAS A
@@ -126,16 +149,15 @@ const validarMes = async (despesa, iniciandoMes) => {
     throw new ErroApi(409, `Já existem leituras de ${mesAno(posterior.data_referencia)}. Não é permitido lançar leitura em mês anterior.`);
   }
 
-  // Para COMEÇAR um mês novo, o último mês com leituras precisa estar completo
-  // (todas finalizadas e todos os aptos lidos). Depois que o mês começou, os
-  // anteriores estão fechados — assim um apto cadastrado no meio do mês não
-  // "reabre" os meses antigos.
+  // Para COMEÇAR um mês novo, o último mês com leituras precisa estar completo:
+  // todas finalizadas e todos os aptos DAQUELE mês lidos (um apto cadastrado
+  // depois que aquele mês começou não conta para ele — entra no mês seguinte).
   if (!iniciandoMes) {
     return;
   }
   const anteriores = outras.filter((d) => d.data_referencia < despesa.data_referencia && Number(d.leituras) > 0);
   const ultimo = anteriores[anteriores.length - 1];
-  const incompleto = ultimo && (Number(ultimo.finalizadas) < Number(ultimo.leituras) || Number(ultimo.finalizadas) < totalAptos) ? ultimo : null;
+  const incompleto = ultimo && (Number(ultimo.finalizadas) < Number(ultimo.leituras) || Number(ultimo.finalizadas) < Number(ultimo.aptos_do_mes)) ? ultimo : null;
   if (incompleto) {
     throw new ErroApi(409, `Finalize as leituras de ${mesAno(incompleto.data_referencia)} antes de começar um novo mês.`);
   }
@@ -152,7 +174,11 @@ const criar = async ({ id_despesa, id_apartamento, leitura_atual, leitura_anteri
   // Ordem dos apartamentos: só o próximo da fila pode ser lido
   const apto = situacao.apartamentos.find((a) => a.id_apartamento === Number(id_apartamento));
   if (!apto) {
-    throw new ErroApi(404, 'Apartamento não encontrado ou inativo.');
+    const existe = await db.query('SELECT ativo FROM T_APARTAMENTO WHERE id_apartamento = $1', [id_apartamento]);
+    if (existe.rowCount === 0 || !existe.rows[0].ativo) {
+      throw new ErroApi(404, 'Apartamento não encontrado ou inativo.');
+    }
+    throw new ErroApi(409, 'Este apartamento foi cadastrado depois que as leituras deste mês começaram. A leitura dele começa no próximo mês.');
   }
   if (apto.leitura) {
     throw new ErroApi(409, 'Este apartamento já possui leitura de gás nesta despesa.');

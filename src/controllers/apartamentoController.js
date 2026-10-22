@@ -1,5 +1,11 @@
 const apartamentoService = require('../services/apartamentoService');
 
+// Prazo de cadastro de apartamentos (5 dias a partir do 1º): inicio, fim e aberto
+const periodoCadastro = async (req, res) => {
+  const data = await apartamentoService.periodoCadastro();
+  return res.status(200).json({ status: 'ok', data });
+};
+
 const listar = async (req, res) => {
   const data = await apartamentoService.listar(req.query);
   return res.status(200).json({ status: 'ok', data });
@@ -31,6 +37,7 @@ const ativar = async (req, res) => {
 };
 
 module.exports = {
+  periodoCadastro,
   listar,
   buscarPorId,
   criar,
