@@ -1,6 +1,7 @@
 const db = require('../configs');
 const ErroApi = require('../utils/ErroApi');
 const despesaService = require('./despesaService');
+const apartamentoService = require('./apartamentoService');
 
 // O cálculo pesado fica no banco (trigger trg_leitura_gas): leitura anterior
 // automática, consumo, valor ao finalizar e trava da leitura finalizada.
@@ -43,19 +44,6 @@ const buscarPorId = async (id) => {
   return result.rows[0];
 };
 
-// Aptos que fazem parte da leitura de um mês, em ordem (bloco, número).
-// Virada de mês: o apto só entra se foi cadastrado ATÉ o dia em que as
-// leituras daquele mês começaram (inicioLeituras). Cadastrado depois, entra
-// no mês seguinte. Mês ainda não começado (inicioLeituras null): todos.
-const listarAptosDoMes = async (inicioLeituras) => {
-  const sql = `SELECT id_apartamento, numero, bloco, data_cadastro
-                 FROM T_APARTAMENTO
-                WHERE ativo = TRUE
-                  AND ($1::DATE IS NULL OR data_cadastro <= $1)
-                ORDER BY bloco, numero`;
-  return (await db.query(sql, [inicioLeituras])).rows;
-};
-
 // Painel da tela de leitura de uma despesa de gás: os apartamentos do mês,
 // em ordem, com a leitura deste mês (se já lançada) e a última leitura
 // finalizada (que será a leitura anterior, bloqueada no Quasar).
@@ -74,7 +62,9 @@ const painel = async (idDespesa) => {
   const inicioLeituras = leituras.length > 0
     ? leituras.map((l) => l.data_leitura).sort()[0]
     : null;
-  const apartamentos = await listarAptosDoMes(inicioLeituras);
+  // Virada de mês (decisão 3A): só os aptos cadastrados até o último dia do
+  // mês desta despesa. Cadastrado depois, entra na leitura do mês seguinte.
+  const apartamentos = await apartamentoService.listarDoMes(despesa.data_referencia);
 
   // Última leitura finalizada de cada apto em OUTRAS despesas (mesma ordem da trigger)
   const ultimas = (await db.query(
@@ -125,17 +115,16 @@ const painel = async (idDespesa) => {
 // Regras de calendário (entre meses), conferidas antes de lançar uma leitura.
 // iniciandoMes = a despesa ainda não tem nenhuma leitura (é a 1ª do mês).
 const validarMes = async (despesa, iniciandoMes) => {
-  // aptos_do_mes: aptos ativos cadastrados até o 1º dia de leitura daquele mês
+  // aptos_do_mes: aptos ativos cadastrados até o último dia do mês da despesa (3A)
   const sql = `SELECT D.id_despesa, D.data_referencia,
                       (SELECT COUNT(*) FROM T_APARTAMENTO P
                         WHERE P.ativo = TRUE
-                          AND P.data_cadastro <= (SELECT MIN(A.data_leitura) FROM T_LEITURA_GAS A
-                                                   WHERE A.id_despesa = D.id_despesa)) AS aptos_do_mes,
+                          AND P.data_cadastro <= (DATE_TRUNC('month', D.data_referencia) + INTERVAL '1 month - 1 day')::DATE) AS aptos_do_mes,
                       (SELECT COUNT(*) FROM T_LEITURA_GAS A
                         WHERE A.id_despesa = D.id_despesa) AS leituras,
-                                    (SELECT COUNT(*) FROM T_LEITURA_GAS A
-                                      WHERE A.id_despesa = D.id_despesa
-                                        AND A.finalizada = TRUE) AS finalizadas
+                      (SELECT COUNT(*) FROM T_LEITURA_GAS A
+                        WHERE A.id_despesa = D.id_despesa
+                          AND A.finalizada = TRUE) AS finalizadas
                  FROM T_DESPESA D
                 WHERE D.valor_m3   IS NOT NULL
                   AND D.ativo      = TRUE
@@ -151,7 +140,7 @@ const validarMes = async (despesa, iniciandoMes) => {
 
   // Para COMEÇAR um mês novo, o último mês com leituras precisa estar completo:
   // todas finalizadas e todos os aptos DAQUELE mês lidos (um apto cadastrado
-  // depois que aquele mês começou não conta para ele — entra no mês seguinte).
+  // depois daquele mês não conta para ele — entra no mês seguinte).
   if (!iniciandoMes) {
     return;
   }
@@ -178,7 +167,7 @@ const criar = async ({ id_despesa, id_apartamento, leitura_atual, leitura_anteri
     if (existe.rowCount === 0 || !existe.rows[0].ativo) {
       throw new ErroApi(404, 'Apartamento não encontrado ou inativo.');
     }
-    throw new ErroApi(409, 'Este apartamento foi cadastrado depois que as leituras deste mês começaram. A leitura dele começa no próximo mês.');
+    throw new ErroApi(409, `Este apartamento foi cadastrado depois de ${mesAno(situacao.data_referencia)}. A leitura dele começa a partir do mês do cadastro.`);
   }
   if (apto.leitura) {
     throw new ErroApi(409, 'Este apartamento já possui leitura de gás nesta despesa.');

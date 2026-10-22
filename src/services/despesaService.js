@@ -1,6 +1,7 @@
 const db = require('../configs');
 const ErroApi = require('../utils/ErroApi');
 const { textoOuNulo } = require('../utils/texto');
+const apartamentoService = require('./apartamentoService');
 
 // Colunas devolvidas em todas as consultas de despesa.
 // A despesa é cobrada na fatura do MÊS SEGUINTE ao da data_referencia
@@ -150,16 +151,8 @@ const calcularRateio = (valorTotal, apartamentos) => {
   });
 };
 
-const listarApartamentosAtivos = async () => {
-  const sql = `SELECT id_apartamento, numero, bloco
-                 FROM T_APARTAMENTO
-                WHERE ativo = TRUE
-                ORDER BY bloco, numero`;
-  return (await db.query(sql)).rows;
-};
-
-// Prévia do rateio (não grava nada): quanto cada apartamento ativo vai pagar.
-// Os itens de fatura são gravados na geração das faturas (parte 6).
+// Prévia do rateio (não grava nada): quanto cada apartamento do mês da
+// despesa vai pagar. Os itens são gravados na geração das faturas (parte 6).
 const previaRateio = async (id) => {
   const despesa = await buscarPorId(id);
   if (despesa.valor_m3 !== null) {
@@ -169,7 +162,7 @@ const previaRateio = async (id) => {
     throw new ErroApi(400, 'Despesa inativa não é rateada.');
   }
 
-  const apartamentos = await listarApartamentosAtivos();
+  const apartamentos = await apartamentoService.listarDoMes(despesa.data_referencia);
   if (apartamentos.length === 0) {
     throw new ErroApi(400, 'Não há apartamentos ativos para ratear a despesa.');
   }
@@ -192,6 +185,5 @@ module.exports = {
   alterar,
   excluir,
   calcularRateio,
-  listarApartamentosAtivos,
   previaRateio
 };

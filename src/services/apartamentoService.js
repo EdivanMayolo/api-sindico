@@ -23,6 +23,21 @@ const periodoCadastro = async () => {
   return result.rows[0];
 };
 
+// Apartamentos de um mês (decisão 3A — mesma regra para rateio, gás e fatura):
+// o apto pertence ao mês se está ativo e foi cadastrado ATÉ O ÚLTIMO DIA
+// daquele mês. Cadastrado em 02/07 → entra a partir de julho.
+// "data" é qualquer dia do mês (ex.: a data_referencia da despesa).
+// Ordem bloco, número: é a ordem da leitura de gás e do rateio (o último
+// da lista recebe o centavo que sobra).
+const listarDoMes = async (data) => {
+  const sql = `SELECT id_apartamento, numero, bloco, data_cadastro
+                 FROM T_APARTAMENTO
+                WHERE ativo = TRUE
+                  AND data_cadastro <= (DATE_TRUNC('month', $1::DATE) + INTERVAL '1 month - 1 day')::DATE
+                ORDER BY bloco, numero`;
+  return (await db.query(sql, [data])).rows;
+};
+
 // Lista com os nomes dos proprietários e moradores ativos de cada apto.
 // Filtro opcional ?ativo=true|false
 const listar = async ({ ativo } = {}) => {
@@ -157,6 +172,7 @@ const ativar = async (id) => {
 
 module.exports = {
   periodoCadastro,
+  listarDoMes,
   listar,
   buscarPorId,
   criar,
