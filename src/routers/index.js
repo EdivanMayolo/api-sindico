@@ -9,6 +9,8 @@ const vinculoRouter = require('./vinculoRouter');
 const despesaRouter = require('./despesaRouter');
 const leituraGasRouter = require('./leituraGasRouter');
 const faturaRouter = require('./faturaRouter');
+const receitaRouter = require('./receitaRouter');
+const financeiroRouter = require('./financeiroRouter');
 
 // Cada recurso fica em um router próprio, com o seu prefixo de URL.
 // A proteção fica visível aqui:
@@ -27,4 +29,6 @@ module.exports = (app) => {
   app.use('/despesas', autenticacao, despesaRouter);
   app.use('/leituras-gas', autenticacao, leituraGasRouter);
   app.use('/faturas', autenticacao, faturaRouter);
+  app.use('/receitas', autenticacao, receitaRouter);
+  app.use('/financeiro', autenticacao, financeiroRouter);
 }
