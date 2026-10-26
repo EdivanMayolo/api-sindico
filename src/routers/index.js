@@ -19,16 +19,27 @@ const financeiroRouter = require('./financeiroRouter');
 //   só ADMIN             → app.use('/rota', autenticacao, somenteAdmin, router)
 // Nos cadastros, consultar é para qualquer logado e gravar é só ADMIN:
 // o somenteAdmin fica rota a rota dentro do router.
+// Swagger (/api-docs): #swagger.tags agrupa as rotas de cada router e
+// #swagger.security põe o cadeado (Authorize) nas rotas que exigem login.
 module.exports = (app) => {
-  app.use('/', statusRouter);
-  app.use('/auth', authRouter);
-  app.use('/usuarios', autenticacao, somenteAdmin, usuarioRouter);
-  app.use('/apartamentos', autenticacao, apartamentoRouter);
-  app.use('/pessoas', autenticacao, pessoaRouter);
-  app.use('/vinculos', autenticacao, vinculoRouter);
-  app.use('/despesas', autenticacao, despesaRouter);
-  app.use('/leituras-gas', autenticacao, leituraGasRouter);
-  app.use('/faturas', autenticacao, faturaRouter);
-  app.use('/receitas', autenticacao, receitaRouter);
-  app.use('/financeiro', autenticacao, financeiroRouter);
+  app.use('/', statusRouter /* #swagger.tags = ['Status'] */);
+  app.use('/auth', authRouter /* #swagger.tags = ['Auth'] */);
+  app.use('/usuarios', autenticacao, somenteAdmin, usuarioRouter /* #swagger.tags = ['Usuários']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/apartamentos', autenticacao, apartamentoRouter /* #swagger.tags = ['Apartamentos']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/pessoas', autenticacao, pessoaRouter /* #swagger.tags = ['Pessoas']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/vinculos', autenticacao, vinculoRouter /* #swagger.tags = ['Vínculos']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/despesas', autenticacao, despesaRouter /* #swagger.tags = ['Despesas']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/leituras-gas', autenticacao, leituraGasRouter /* #swagger.tags = ['Leituras de gás']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/faturas', autenticacao, faturaRouter /* #swagger.tags = ['Faturas']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/receitas', autenticacao, receitaRouter /* #swagger.tags = ['Receitas']
+     #swagger.security = [{ "bearerAuth": [] }] */);
+  app.use('/financeiro', autenticacao, financeiroRouter /* #swagger.tags = ['Financeiro']
+     #swagger.security = [{ "bearerAuth": [] }] */);
 }

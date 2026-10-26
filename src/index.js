@@ -10,12 +10,19 @@ const PORT = process.env.PORT;
 app.use(cors());
 app.use(express.json());
 
-require('./routers')(app);
+const iniciar = async () => {
+  require('./routers')(app);
 
-// Estes dois ficam sempre por último
-app.use(rotaNaoEncontrada);
-app.use(tratarErros);
+  // Documentação em /api-docs (espera o swagger-autogen gerar o arquivo)
+  await require('./configs/swagger')(app);
 
-app.listen(PORT, () => {
-  console.log(`API Rodando na porta ${PORT}`)
-});
+  // Estes dois ficam sempre por último
+  app.use(rotaNaoEncontrada);
+  app.use(tratarErros);
+
+  app.listen(PORT, () => {
+    console.log(`API Rodando na porta ${PORT}`)
+  });
+};
+
+iniciar();

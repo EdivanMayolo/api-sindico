@@ -1,0 +1,3520 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "CondoSimples API",
+    "version": "1.0.0",
+    "description": "\nAPI REST do **CondoSimples** — Sistema de Autogestão Condominial (TCC II de Sistemas de Informação).\n\n## Como fazer o login e testar as rotas\n\nQuase todas as rotas exigem login (as que têm o **cadeado**). Para testar por esta página:\n\n1. Abra **Auth → POST /auth/login** e clique em **Try it out**.\n2. No corpo, informe o `email` e a `senha` de um usuário cadastrado e clique em **Execute**.\n3. Na resposta, copie o valor do `token` (sem as aspas). Ele vale 8 horas.\n4. Clique no botão verde **Authorize** (logo abaixo deste texto, à direita).\n5. No campo **Value**, digite `Bearer`, um espaço e cole o token:\n   `Bearer eyJhbGciOiJIUzI1NiIs...`\n6. Clique em **Authorize** e depois em **Close**. O cadeado fica fechado.\n\nPronto: as rotas com cadeado passam a enviar o token. Quando o token vencer (401 \"Sessão\nexpirada\"), faça o login de novo e repita os passos 3 a 6 (**Logout** limpa o token antigo).\n\nAtenção: o **Execute** grava de verdade no banco que a API está usando.\n\n## Permissões\n\n- **Logado:** qualquer usuário com token válido (perfil `ADMIN` ou `COMUM`).\n- **ADMIN:** só usuário com perfil `ADMIN` (síndico). Usuário `COMUM` recebe **403**.\n\n## Formato das respostas\n\nSucesso: `{ \"status\": \"ok\", \"data\": ... }` (ou `\"message\"` nas exclusões e trocas de senha).\n\nErro (modelo *Erro*, em **Models**): `{ \"status\": \"error\", \"message\": \"texto explicando o erro\" }`, com o código HTTP:\n\n| Código | Quando |\n|---|---|\n| 400 | Dado inválido ou faltando, regra de negócio |\n| 401 | Sem token, token inválido ou expirado |\n| 403 | Sem permissão (rota só para ADMIN) |\n| 404 | Registro ou rota não encontrada |\n| 409 | Conflito: registro duplicado, em uso ou situação que impede a ação |\n| 500 | Erro interno |\n\n## Datas e valores\n\nDatas no formato **AAAA-MM-DD** (ISO 8601). Valores em reais, como número (ex.: `150.5`).\n"
+  },
+  "host": "localhost:3000",
+  "basePath": "/",
+  "tags": [
+    {
+      "name": "Status",
+      "description": "Teste da API e da conexão com o banco"
+    },
+    {
+      "name": "Auth",
+      "description": "Login e dados do usuário logado"
+    },
+    {
+      "name": "Usuários",
+      "description": "Usuários do sistema (só ADMIN)"
+    },
+    {
+      "name": "Apartamentos",
+      "description": "Unidades do condomínio. Não são excluídas, só inativadas (RN01)"
+    },
+    {
+      "name": "Pessoas",
+      "description": "Proprietários e inquilinos"
+    },
+    {
+      "name": "Vínculos",
+      "description": "Ligação pessoa ↔ apartamento (proprietário, inquilino, morador)"
+    },
+    {
+      "name": "Despesas",
+      "description": "Gastos do condomínio e prévia do rateio"
+    },
+    {
+      "name": "Leituras de gás",
+      "description": "Leitura do relógio de gás de cada apartamento"
+    },
+    {
+      "name": "Faturas",
+      "description": "Esboço da fatura mensal de cada apartamento"
+    },
+    {
+      "name": "Receitas",
+      "description": "Entradas de dinheiro"
+    },
+    {
+      "name": "Financeiro",
+      "description": "Movimentação e saldo do caixa"
+    }
+  ],
+  "schemes": [
+    "http"
+  ],
+  "securityDefinitions": {
+    "bearerAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "Authorization",
+      "description": "Digite Bearer, um espaço e o token do login. Ex.: Bearer eyJhbGciOiJIUzI1NiIs..."
+    }
+  },
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "Status"
+        ],
+        "summary": "Testa a API e a conexão com o banco",
+        "description": "Permissão: pública.",
+        "responses": {
+          "200": {
+            "description": "API e banco funcionando",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Status"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Faz o login e devolve o token",
+        "description": "Permissão: pública. O token vale 8 horas e vai no cabeçalho das outras rotas: Authorization: Bearer <token>. E-mail ou senha errados, ou usuário inativo → 401.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/Login"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Login feito",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/LoginResposta"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Dados do usuário logado",
+        "description": "Permissão: logado.",
+        "responses": {
+          "200": {
+            "description": "Usuário logado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Usuario"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/auth/senha": {
+      "patch": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Troca a própria senha",
+        "description": "Permissão: logado. Exige a senha atual; a nova precisa ter no mínimo 6 caracteres.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/AlterarMinhaSenha"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Senha alterada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "message": {
+                  "type": "string",
+                  "example": "Senha alterada com sucesso."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/usuarios/": {
+      "get": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Lista os usuários",
+        "description": "Permissão: ADMIN.",
+        "responses": {
+          "200": {
+            "description": "Lista de usuários",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Usuario"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Cadastra um usuário",
+        "description": "Permissão: ADMIN. perfil = ADMIN ou COMUM. Senha com no mínimo 6 caracteres (gravada só em hash). E-mail gravado em minúsculas e único.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/UsuarioEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Usuário cadastrado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Usuario"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/usuarios/{id}": {
+      "get": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Busca um usuário",
+        "description": "Permissão: ADMIN.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usuário",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Usuario"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Altera um usuário",
+        "description": "Permissão: ADMIN. ativo = false bloqueia o acesso (usuário não é excluído). O ADMIN não pode tirar o próprio perfil ADMIN nem se inativar.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/UsuarioAlteracao"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usuário alterado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Usuario"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/usuarios/{id}/senha": {
+      "patch": {
+        "tags": [
+          "Usuários"
+        ],
+        "summary": "Redefine a senha de um usuário",
+        "description": "Permissão: ADMIN. Não pede a senha atual (uso: usuário esqueceu a senha).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/NovaSenha"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Senha alterada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "message": {
+                  "type": "string",
+                  "example": "Senha alterada com sucesso."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/apartamentos/": {
+      "get": {
+        "tags": [
+          "Apartamentos"
+        ],
+        "summary": "Lista os apartamentos",
+        "description": "Permissão: logado. Traz os nomes dos proprietários e dos moradores de cada apartamento.",
+        "parameters": [
+          {
+            "name": "ativo",
+            "in": "query",
+            "type": "boolean",
+            "description": "true = só ativos; false = só inativos"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de apartamentos",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Apartamento"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Apartamentos"
+        ],
+        "summary": "Cadastra um apartamento",
+        "description": "Permissão: ADMIN. Exige o proprietário (id_pessoa_proprietario): o apartamento e o vínculo de PROPRIETARIO são gravados juntos. reside = o proprietário mora no apto. (numero, bloco) não se repete. data_cadastro = data do dia.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ApartamentoEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Apartamento cadastrado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/ApartamentoCriado"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/apartamentos/{id}": {
+      "get": {
+        "tags": [
+          "Apartamentos"
+        ],
+        "summary": "Busca um apartamento",
+        "description": "Permissão: logado. Traz os vínculos ativos (proprietários e inquilinos).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apartamento",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/ApartamentoDetalhe"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Apartamentos"
+        ],
+        "summary": "Altera um apartamento",
+        "description": "Permissão: ADMIN. Altera número, bloco e andar. Proprietários e moradores são alterados pelos vínculos.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ApartamentoAlteracao"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apartamento alterado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/ApartamentoDados"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/apartamentos/{id}/inativar": {
+      "patch": {
+        "tags": [
+          "Apartamentos"
+        ],
+        "summary": "Inativa um apartamento",
+        "description": "Permissão: ADMIN. Apartamento não é excluído (RN01). Bloqueado se tiver inquilino ativo (409); o proprietário continua dono.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apartamento inativado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/ApartamentoDados"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/apartamentos/{id}/ativar": {
+      "patch": {
+        "tags": [
+          "Apartamentos"
+        ],
+        "summary": "Reativa um apartamento",
+        "description": "Permissão: ADMIN. Exige um proprietário ativo (409 se não tiver).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apartamento reativado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/ApartamentoDados"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/pessoas/": {
+      "get": {
+        "tags": [
+          "Pessoas"
+        ],
+        "summary": "Lista as pessoas",
+        "description": "Permissão: logado.",
+        "parameters": [
+          {
+            "name": "ativo",
+            "in": "query",
+            "type": "boolean",
+            "description": "true = só ativas; false = só inativas"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de pessoas",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Pessoa"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Pessoas"
+        ],
+        "summary": "Cadastra uma pessoa",
+        "description": "Permissão: ADMIN. Nome, CPF e telefone obrigatórios. O CPF pode vir com máscara: é gravado só com os 11 números e validado (CPF inválido → 400; repetido → 409).",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/PessoaEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Pessoa cadastrada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Pessoa"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/pessoas/{id}": {
+      "get": {
+        "tags": [
+          "Pessoas"
+        ],
+        "summary": "Busca uma pessoa",
+        "description": "Permissão: logado. Traz os vínculos ativos com apartamentos.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pessoa",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/PessoaDetalhe"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Pessoas"
+        ],
+        "summary": "Altera uma pessoa",
+        "description": "Permissão: ADMIN. ativo = false inativa a pessoa (bloqueado se tiver vínculo ativo → 409).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/PessoaAlteracao"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pessoa alterada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Pessoa"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Pessoas"
+        ],
+        "summary": "Exclui uma pessoa",
+        "description": "Permissão: ADMIN. Sem histórico → exclui. Com histórico de vínculos → apenas inativa. Com vínculo ativo → 409.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pessoa excluída ou inativada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "message": {
+                  "type": "string",
+                  "example": "Pessoa excluída."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/vinculos/": {
+      "get": {
+        "tags": [
+          "Vínculos"
+        ],
+        "summary": "Lista os vínculos",
+        "description": "Permissão: logado. Filtros opcionais.",
+        "parameters": [
+          {
+            "name": "id_apartamento",
+            "in": "query",
+            "type": "integer",
+            "description": "Vínculos de um apartamento"
+          },
+          {
+            "name": "id_pessoa",
+            "in": "query",
+            "type": "integer",
+            "description": "Vínculos de uma pessoa"
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "type": "boolean",
+            "description": "true = só ativos; false = só encerrados"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de vínculos",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Vinculo"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Vínculos"
+        ],
+        "summary": "Cria um vínculo pessoa ↔ apartamento",
+        "description": "Permissão: ADMIN. tipo_vinculo = PROPRIETARIO ou INQUILINO. reside = mora no apartamento. data_inicio opcional (padrão: hoje). Inquilino só em um apartamento por vez (RN03); apto inativo só recebe PROPRIETARIO; pessoa inativa não recebe vínculo.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/VinculoEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Vínculo criado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/VinculoDados"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/vinculos/{id}": {
+      "get": {
+        "tags": [
+          "Vínculos"
+        ],
+        "summary": "Busca um vínculo",
+        "description": "Permissão: logado.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vínculo",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Vinculo"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Vínculos"
+        ],
+        "summary": "Altera um vínculo",
+        "description": "Permissão: ADMIN. Só reside (obrigatório) e data_inicio. Vínculo encerrado não é alterado.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/VinculoAlteracao"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vínculo alterado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/VinculoDados"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/vinculos/{id}/encerrar": {
+      "patch": {
+        "tags": [
+          "Vínculos"
+        ],
+        "summary": "Encerra um vínculo",
+        "description": "Permissão: ADMIN. data_fim opcional (padrão: hoje). Não encerra o último proprietário de um apartamento ativo (409).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "$ref": "#/definitions/VinculoEncerrar"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vínculo encerrado",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/VinculoDados"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/despesas/": {
+      "get": {
+        "tags": [
+          "Despesas"
+        ],
+        "summary": "Lista as despesas",
+        "description": "Permissão: logado. mes_cobranca/ano_cobranca = mês seguinte ao da data_referencia (gasto de junho é cobrado em julho).",
+        "parameters": [
+          {
+            "name": "mes",
+            "in": "query",
+            "type": "integer",
+            "description": "Mês da data_referencia (1 a 12)"
+          },
+          {
+            "name": "ano",
+            "in": "query",
+            "type": "integer",
+            "description": "Ano da data_referencia"
+          },
+          {
+            "name": "tipo_despesa",
+            "in": "query",
+            "type": "string",
+            "enum": [
+              "FIXA",
+              "VARIAVEL",
+              "OUTROS"
+            ]
+          },
+          {
+            "name": "ativo",
+            "in": "query",
+            "type": "boolean",
+            "description": "true = só ativas; false = só inativas"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de despesas",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Despesa"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Despesas"
+        ],
+        "summary": "Cadastra uma despesa",
+        "description": "Permissão: ADMIN. tipo_despesa = FIXA, VARIAVEL ou OUTROS. valor_m3 (preço do m³) só em despesa VARIAVEL: despesa com valor_m3 é a despesa de gás.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DespesaEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Despesa cadastrada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Despesa"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/despesas/{id}": {
+      "get": {
+        "tags": [
+          "Despesas"
+        ],
+        "summary": "Busca uma despesa",
+        "description": "Permissão: logado.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Despesa",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Despesa"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Despesas"
+        ],
+        "summary": "Altera uma despesa",
+        "description": "Permissão: ADMIN. Despesa já em fatura não cancelada ou com leituras de gás: só descricao e observacao podem mudar (409).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/DespesaEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Despesa alterada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Despesa"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Despesas"
+        ],
+        "summary": "Exclui uma despesa",
+        "description": "Permissão: ADMIN. Sem uso → exclui. Só em faturas canceladas → inativa. Em fatura não cancelada ou com leituras de gás → 409.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Despesa excluída ou inativada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "message": {
+                  "type": "string",
+                  "example": "Despesa excluída."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/despesas/{id}/rateio": {
+      "get": {
+        "tags": [
+          "Despesas"
+        ],
+        "summary": "Prévia do rateio da despesa",
+        "description": "Permissão: logado. Não grava nada: os itens são gravados ao gerar as faturas. Divisão igual entre os apartamentos do mês (RN07); o último recebe a diferença dos centavos.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rateio",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Rateio"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/leituras-gas/despesa/{id_despesa}": {
+      "get": {
+        "tags": [
+          "Leituras de gás"
+        ],
+        "summary": "Painel de leitura de uma despesa de gás",
+        "description": "Permissão: logado. Aptos do mês em ordem (bloco, número) com a situação (PENDENTE, EM_ANDAMENTO, FINALIZADA), a leitura do mês e a última leitura finalizada. completa = todas finalizadas. diferenca = conta − consumo dos aptos (não é cobrada).",
+        "parameters": [
+          {
+            "name": "id_despesa",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Painel",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/PainelGas"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/leituras-gas/{id}": {
+      "get": {
+        "tags": [
+          "Leituras de gás"
+        ],
+        "summary": "Busca uma leitura de gás",
+        "description": "Permissão: logado.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leitura",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/LeituraGas"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Leituras de gás"
+        ],
+        "summary": "Corrige uma leitura",
+        "description": "Permissão: ADMIN. Só leitura não finalizada.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LeituraGasAlteracao"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leitura corrigida",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/LeituraGas"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Leituras de gás"
+        ],
+        "summary": "Exclui uma leitura",
+        "description": "Permissão: ADMIN. Só leitura não finalizada.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leitura excluída",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "message": {
+                  "type": "string",
+                  "example": "Leitura de gás excluída."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/leituras-gas/": {
+      "post": {
+        "tags": [
+          "Leituras de gás"
+        ],
+        "summary": "Lança a leitura de um apartamento",
+        "description": "Permissão: ADMIN. Um apto por vez, em ordem: só lança o próximo depois que o anterior estiver finalizado. Sem leitura retroativa. data_leitura = data do dia. leitura_anterior: obrigatória na 1ª leitura do apto ou na troca de relógio; nas outras, o banco usa a última leitura finalizada e ignora o valor enviado.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/LeituraGasEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Leitura lançada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/LeituraGas"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/leituras-gas/{id}/finalizar": {
+      "patch": {
+        "tags": [
+          "Leituras de gás"
+        ],
+        "summary": "Finaliza uma leitura",
+        "description": "Permissão: ADMIN. O banco calcula valor = consumo × valor_m3 e a leitura fica travada (não altera nem exclui).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leitura finalizada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/LeituraGas"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/faturas/": {
+      "get": {
+        "tags": [
+          "Faturas"
+        ],
+        "summary": "Lista as faturas",
+        "description": "Permissão: logado. Consulta por apartamento, mês e ano (RF17). mes/ano = mês dos gastos (fatura de 06/2026 é cobrada em julho).",
+        "parameters": [
+          {
+            "name": "id_apartamento",
+            "in": "query",
+            "type": "integer"
+          },
+          {
+            "name": "mes",
+            "in": "query",
+            "type": "integer",
+            "description": "Mês de referência (1 a 12)"
+          },
+          {
+            "name": "ano",
+            "in": "query",
+            "type": "integer",
+            "description": "Ano de referência"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "type": "string",
+            "enum": [
+              "ABERTA",
+              "EMITIDA",
+              "PAGA",
+              "CANCELADA"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de faturas",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Fatura"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/faturas/{id}": {
+      "get": {
+        "tags": [
+          "Faturas"
+        ],
+        "summary": "Busca uma fatura com os itens",
+        "description": "Permissão: logado. avulso = item lançado à mão (sem despesa).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fatura",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/FaturaDetalhe"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/faturas/gerar": {
+      "post": {
+        "tags": [
+          "Faturas"
+        ],
+        "summary": "Gera as faturas do mês",
+        "description": "Permissão: ADMIN. Gera de uma vez a fatura de todos os apartamentos do mês, só a partir do 1º dia do mês seguinte. Entram as despesas pendentes até o fim do mês (rateio igual) e o gás (um item por leitura finalizada). Mês já gerado → 409. Leituras de gás incompletas → 409.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/GerarFaturas"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Faturas geradas",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Fatura"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/faturas/{id}/itens": {
+      "post": {
+        "tags": [
+          "Faturas"
+        ],
+        "summary": "Inclui um item avulso na fatura",
+        "description": "Permissão: ADMIN. Ex.: multa, taxa extra. Só em fatura ABERTA. O total da fatura é recalculado pelo banco.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ItemAvulso"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Item incluído (devolve a fatura)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/FaturaDetalhe"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/faturas/{id}/itens/{id_item}": {
+      "delete": {
+        "tags": [
+          "Faturas"
+        ],
+        "summary": "Remove um item avulso da fatura",
+        "description": "Permissão: ADMIN. Só item avulso e só em fatura ABERTA (itens de despesa fazem parte do rateio → 409).",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "id_item",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Item removido (devolve a fatura)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/FaturaDetalhe"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/receitas/": {
+      "get": {
+        "tags": [
+          "Receitas"
+        ],
+        "summary": "Lista as receitas",
+        "description": "Permissão: logado.",
+        "parameters": [
+          {
+            "name": "mes",
+            "in": "query",
+            "type": "integer",
+            "description": "Mês da data_recebimento (1 a 12)"
+          },
+          {
+            "name": "ano",
+            "in": "query",
+            "type": "integer",
+            "description": "Ano da data_recebimento"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de receitas",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Receita"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Receitas"
+        ],
+        "summary": "Lança uma receita",
+        "description": "Permissão: ADMIN. descricao e valor (maior que zero) obrigatórios. data_recebimento opcional (padrão: hoje). O pagamento de fatura é lançado aqui, à mão.",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ReceitaEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Receita lançada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Receita"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/receitas/{id}": {
+      "get": {
+        "tags": [
+          "Receitas"
+        ],
+        "summary": "Busca uma receita",
+        "description": "Permissão: logado.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Receita",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Receita"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Receitas"
+        ],
+        "summary": "Altera uma receita",
+        "description": "Permissão: ADMIN. Sem data_recebimento, mantém a data atual.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ReceitaEntrada"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Receita alterada",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Receita"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Receitas"
+        ],
+        "summary": "Exclui uma receita",
+        "description": "Permissão: ADMIN. Exclui de verdade; o saldo se ajusta sozinho.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Receita excluída",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "message": {
+                  "type": "string",
+                  "example": "Receita excluída."
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/financeiro/movimentacao": {
+      "get": {
+        "tags": [
+          "Financeiro"
+        ],
+        "summary": "Movimentação financeira (extrato)",
+        "description": "Permissão: logado. Receitas (ENTRADA) e despesas ativas (SAIDA), em ordem de data. A despesa de gás entra pelo valor da conta.",
+        "parameters": [
+          {
+            "name": "data_inicio",
+            "in": "query",
+            "type": "string",
+            "format": "date",
+            "description": "AAAA-MM-DD"
+          },
+          {
+            "name": "data_fim",
+            "in": "query",
+            "type": "string",
+            "format": "date",
+            "description": "AAAA-MM-DD"
+          },
+          {
+            "name": "tipo",
+            "in": "query",
+            "type": "string",
+            "enum": [
+              "ENTRADA",
+              "SAIDA"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lançamentos",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Movimentacao"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/financeiro/saldo": {
+      "get": {
+        "tags": [
+          "Financeiro"
+        ],
+        "summary": "Saldo do caixa",
+        "description": "Permissão: logado. Sem datas: saldo geral (total_receitas, total_despesas, saldo). Com data_inicio e/ou data_fim: saldo_anterior, entradas, saidas, saldo_periodo e saldo_final (ver exemplo SaldoPeriodo em Models).",
+        "parameters": [
+          {
+            "name": "data_inicio",
+            "in": "query",
+            "type": "string",
+            "format": "date",
+            "description": "AAAA-MM-DD"
+          },
+          {
+            "name": "data_fim",
+            "in": "query",
+            "type": "string",
+            "format": "date",
+            "description": "AAAA-MM-DD"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saldo geral (sem datas)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "$ref": "#/definitions/Saldo"
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "Erro": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "example": "error"
+        },
+        "message": {
+          "type": "string",
+          "example": "Texto explicando o erro."
+        }
+      }
+    },
+    "Status": {
+      "type": "object",
+      "properties": {
+        "versao": {
+          "type": "string",
+          "example": "PostgreSQL 15.12, compiled by Visual C++ build 1942, 64-bit"
+        },
+        "banco": {
+          "type": "string",
+          "example": "condosimples"
+        }
+      }
+    },
+    "Login": {
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "example": "sindico@condominio.com"
+        },
+        "senha": {
+          "type": "string",
+          "example": "sua_senha"
+        }
+      }
+    },
+    "LoginResposta": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        },
+        "usuario": {
+          "type": "object",
+          "properties": {
+            "id_usuario": {
+              "type": "number",
+              "example": 1
+            },
+            "nome": {
+              "type": "string",
+              "example": "Síndico"
+            },
+            "email": {
+              "type": "string",
+              "example": "sindico@condominio.com"
+            },
+            "perfil": {
+              "type": "string",
+              "example": "ADMIN"
+            }
+          }
+        }
+      }
+    },
+    "AlterarMinhaSenha": {
+      "type": "object",
+      "properties": {
+        "senha_atual": {
+          "type": "string",
+          "example": "senha_atual"
+        },
+        "nova_senha": {
+          "type": "string",
+          "example": "nova_senha"
+        }
+      }
+    },
+    "Usuario": {
+      "type": "object",
+      "properties": {
+        "id_usuario": {
+          "type": "number",
+          "example": 1
+        },
+        "nome": {
+          "type": "string",
+          "example": "Síndico"
+        },
+        "email": {
+          "type": "string",
+          "example": "sindico@condominio.com"
+        },
+        "perfil": {
+          "type": "string",
+          "example": "ADMIN"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "UsuarioEntrada": {
+      "type": "object",
+      "properties": {
+        "nome": {
+          "type": "string",
+          "example": "Zelador"
+        },
+        "email": {
+          "type": "string",
+          "example": "zelador@condominio.com"
+        },
+        "senha": {
+          "type": "string",
+          "example": "123456"
+        },
+        "perfil": {
+          "type": "string",
+          "example": "COMUM"
+        }
+      }
+    },
+    "UsuarioAlteracao": {
+      "type": "object",
+      "properties": {
+        "nome": {
+          "type": "string",
+          "example": "Zelador"
+        },
+        "email": {
+          "type": "string",
+          "example": "zelador@condominio.com"
+        },
+        "perfil": {
+          "type": "string",
+          "example": "COMUM"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "NovaSenha": {
+      "type": "object",
+      "properties": {
+        "nova_senha": {
+          "type": "string",
+          "example": "nova_senha"
+        }
+      }
+    },
+    "Apartamento": {
+      "type": "object",
+      "properties": {
+        "id_apartamento": {
+          "type": "number",
+          "example": 1
+        },
+        "numero": {
+          "type": "string",
+          "example": "101"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "andar": {
+          "type": "string",
+          "example": "1"
+        },
+        "data_cadastro": {
+          "type": "string",
+          "example": "2026-06-01"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        },
+        "proprietarios": {
+          "type": "string",
+          "example": "João da Silva"
+        },
+        "moradores": {
+          "type": "string",
+          "example": "Maria Souza"
+        }
+      }
+    },
+    "ApartamentoDetalhe": {
+      "type": "object",
+      "properties": {
+        "id_apartamento": {
+          "type": "number",
+          "example": 1
+        },
+        "numero": {
+          "type": "string",
+          "example": "101"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "andar": {
+          "type": "string",
+          "example": "1"
+        },
+        "data_cadastro": {
+          "type": "string",
+          "example": "2026-06-01"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        },
+        "vinculos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Vinculo"
+          }
+        }
+      }
+    },
+    "ApartamentoDados": {
+      "type": "object",
+      "properties": {
+        "id_apartamento": {
+          "type": "number",
+          "example": 3
+        },
+        "numero": {
+          "type": "string",
+          "example": "103"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "andar": {
+          "type": "string",
+          "example": "1"
+        },
+        "data_cadastro": {
+          "type": "string",
+          "example": "2026-07-02"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "ApartamentoCriado": {
+      "type": "object",
+      "properties": {
+        "id_apartamento": {
+          "type": "number",
+          "example": 3
+        },
+        "numero": {
+          "type": "string",
+          "example": "103"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "andar": {
+          "type": "string",
+          "example": "1"
+        },
+        "data_cadastro": {
+          "type": "string",
+          "example": "2026-07-02"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        },
+        "vinculos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/VinculoDados"
+          }
+        }
+      }
+    },
+    "ApartamentoEntrada": {
+      "type": "object",
+      "properties": {
+        "numero": {
+          "type": "string",
+          "example": "103"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "andar": {
+          "type": "string",
+          "example": "1"
+        },
+        "id_pessoa_proprietario": {
+          "type": "number",
+          "example": 1
+        },
+        "reside": {
+          "type": "boolean",
+          "example": false
+        }
+      }
+    },
+    "ApartamentoAlteracao": {
+      "type": "object",
+      "properties": {
+        "numero": {
+          "type": "string",
+          "example": "103"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "andar": {
+          "type": "string",
+          "example": "1"
+        }
+      }
+    },
+    "Pessoa": {
+      "type": "object",
+      "properties": {
+        "id_pessoa": {
+          "type": "number",
+          "example": 1
+        },
+        "nome": {
+          "type": "string",
+          "example": "João da Silva"
+        },
+        "cpf": {
+          "type": "string",
+          "example": "52998224725"
+        },
+        "telefone": {
+          "type": "string",
+          "example": "(51) 99999-0001"
+        },
+        "email": {
+          "type": "string",
+          "example": "joao@email.com"
+        },
+        "endereco": {
+          "type": "string",
+          "example": "Rua das Flores, 50"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "PessoaDetalhe": {
+      "type": "object",
+      "properties": {
+        "id_pessoa": {
+          "type": "number",
+          "example": 1
+        },
+        "nome": {
+          "type": "string",
+          "example": "João da Silva"
+        },
+        "cpf": {
+          "type": "string",
+          "example": "52998224725"
+        },
+        "telefone": {
+          "type": "string",
+          "example": "(51) 99999-0001"
+        },
+        "email": {
+          "type": "string",
+          "example": "joao@email.com"
+        },
+        "endereco": {
+          "type": "string",
+          "example": "Rua das Flores, 50"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        },
+        "vinculos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Vinculo"
+          }
+        }
+      }
+    },
+    "PessoaEntrada": {
+      "type": "object",
+      "properties": {
+        "nome": {
+          "type": "string",
+          "example": "Ana Pereira"
+        },
+        "cpf": {
+          "type": "string",
+          "example": "111.444.777-35"
+        },
+        "telefone": {
+          "type": "string",
+          "example": "(51) 98888-0003"
+        },
+        "email": {
+          "type": "string",
+          "example": "ana@email.com"
+        },
+        "endereco": {
+          "type": "string",
+          "example": "Rua das Flores, 50"
+        }
+      }
+    },
+    "PessoaAlteracao": {
+      "type": "object",
+      "properties": {
+        "nome": {
+          "type": "string",
+          "example": "Ana Pereira"
+        },
+        "cpf": {
+          "type": "string",
+          "example": "111.444.777-35"
+        },
+        "telefone": {
+          "type": "string",
+          "example": "(51) 98888-0003"
+        },
+        "email": {
+          "type": "string",
+          "example": "ana@email.com"
+        },
+        "endereco": {
+          "type": "string",
+          "example": "Rua das Flores, 50"
+        },
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "Vinculo": {
+      "type": "object",
+      "properties": {
+        "id_vinculo": {
+          "type": "number",
+          "example": 1
+        },
+        "id_apartamento": {
+          "type": "number",
+          "example": 1
+        },
+        "numero": {
+          "type": "string",
+          "example": "101"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "id_pessoa": {
+          "type": "number",
+          "example": 1
+        },
+        "nome": {
+          "type": "string",
+          "example": "João da Silva"
+        },
+        "tipo_vinculo": {
+          "type": "string",
+          "example": "PROPRIETARIO"
+        },
+        "reside": {
+          "type": "boolean",
+          "example": false
+        },
+        "data_inicio": {
+          "type": "string",
+          "example": "2026-01-01"
+        },
+        "data_fim": {},
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "VinculoDados": {
+      "type": "object",
+      "properties": {
+        "id_vinculo": {
+          "type": "number",
+          "example": 3
+        },
+        "id_pessoa": {
+          "type": "number",
+          "example": 2
+        },
+        "id_apartamento": {
+          "type": "number",
+          "example": 1
+        },
+        "tipo_vinculo": {
+          "type": "string",
+          "example": "INQUILINO"
+        },
+        "reside": {
+          "type": "boolean",
+          "example": true
+        },
+        "data_inicio": {
+          "type": "string",
+          "example": "2026-03-01"
+        },
+        "data_fim": {},
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "VinculoEntrada": {
+      "type": "object",
+      "properties": {
+        "id_pessoa": {
+          "type": "number",
+          "example": 2
+        },
+        "id_apartamento": {
+          "type": "number",
+          "example": 1
+        },
+        "tipo_vinculo": {
+          "type": "string",
+          "example": "INQUILINO"
+        },
+        "reside": {
+          "type": "boolean",
+          "example": true
+        },
+        "data_inicio": {
+          "type": "string",
+          "example": "2026-03-01"
+        }
+      }
+    },
+    "VinculoAlteracao": {
+      "type": "object",
+      "properties": {
+        "reside": {
+          "type": "boolean",
+          "example": true
+        },
+        "data_inicio": {
+          "type": "string",
+          "example": "2026-03-01"
+        }
+      }
+    },
+    "VinculoEncerrar": {
+      "type": "object",
+      "properties": {
+        "data_fim": {
+          "type": "string",
+          "example": "2026-10-31"
+        }
+      }
+    },
+    "Despesa": {
+      "type": "object",
+      "properties": {
+        "id_despesa": {
+          "type": "number",
+          "example": 1
+        },
+        "descricao": {
+          "type": "string",
+          "example": "Energia elétrica - áreas comuns"
+        },
+        "tipo_despesa": {
+          "type": "string",
+          "example": "FIXA"
+        },
+        "valor_total": {
+          "type": "number",
+          "example": 300
+        },
+        "valor_m3": {},
+        "data_referencia": {
+          "type": "string",
+          "example": "2026-06-30"
+        },
+        "observacao": {},
+        "ativo": {
+          "type": "boolean",
+          "example": true
+        },
+        "mes_cobranca": {
+          "type": "number",
+          "example": 7
+        },
+        "ano_cobranca": {
+          "type": "number",
+          "example": 2026
+        }
+      }
+    },
+    "DespesaEntrada": {
+      "type": "object",
+      "properties": {
+        "descricao": {
+          "type": "string",
+          "example": "Energia elétrica - áreas comuns"
+        },
+        "tipo_despesa": {
+          "type": "string",
+          "example": "FIXA"
+        },
+        "valor_total": {
+          "type": "number",
+          "example": 300
+        },
+        "valor_m3": {},
+        "data_referencia": {
+          "type": "string",
+          "example": "2026-06-30"
+        },
+        "observacao": {}
+      }
+    },
+    "Rateio": {
+      "type": "object",
+      "properties": {
+        "id_despesa": {
+          "type": "number",
+          "example": 1
+        },
+        "descricao": {
+          "type": "string",
+          "example": "Energia elétrica - áreas comuns"
+        },
+        "valor_total": {
+          "type": "number",
+          "example": 300
+        },
+        "mes_cobranca": {
+          "type": "number",
+          "example": 7
+        },
+        "ano_cobranca": {
+          "type": "number",
+          "example": 2026
+        },
+        "quantidade_apartamentos": {
+          "type": "number",
+          "example": 2
+        },
+        "apartamentos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id_apartamento": {
+                "type": "number",
+                "example": 2
+              },
+              "numero": {
+                "type": "string",
+                "example": "102"
+              },
+              "bloco": {
+                "type": "string",
+                "example": "A"
+              },
+              "data_cadastro": {
+                "type": "string",
+                "example": "2026-06-01"
+              },
+              "valor": {
+                "type": "number",
+                "example": 150
+              }
+            }
+          }
+        }
+      }
+    },
+    "LeituraGas": {
+      "type": "object",
+      "properties": {
+        "id_leitura_gas": {
+          "type": "number",
+          "example": 6
+        },
+        "id_despesa": {
+          "type": "number",
+          "example": 4
+        },
+        "id_apartamento": {
+          "type": "number",
+          "example": 2
+        },
+        "numero": {
+          "type": "string",
+          "example": "102"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "data_leitura": {
+          "type": "string",
+          "example": "2026-08-31"
+        },
+        "leitura_anterior": {
+          "type": "number",
+          "example": 1012
+        },
+        "leitura_atual": {
+          "type": "number",
+          "example": 1020
+        },
+        "consumo": {
+          "type": "number",
+          "example": 8
+        },
+        "valor_m3": {
+          "type": "number",
+          "example": 10
+        },
+        "valor": {
+          "type": "number",
+          "example": 80
+        },
+        "troca_relogio": {
+          "type": "boolean",
+          "example": false
+        },
+        "finalizada": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "LeituraGasEntrada": {
+      "type": "object",
+      "properties": {
+        "id_despesa": {
+          "type": "number",
+          "example": 4
+        },
+        "id_apartamento": {
+          "type": "number",
+          "example": 2
+        },
+        "leitura_atual": {
+          "type": "number",
+          "example": 1020
+        },
+        "leitura_anterior": {},
+        "troca_relogio": {
+          "type": "boolean",
+          "example": false
+        }
+      }
+    },
+    "LeituraGasAlteracao": {
+      "type": "object",
+      "properties": {
+        "leitura_atual": {
+          "type": "number",
+          "example": 1020
+        },
+        "leitura_anterior": {},
+        "troca_relogio": {
+          "type": "boolean",
+          "example": false
+        }
+      }
+    },
+    "PainelGas": {
+      "type": "object",
+      "properties": {
+        "id_despesa": {
+          "type": "number",
+          "example": 4
+        },
+        "descricao": {
+          "type": "string",
+          "example": "Gás"
+        },
+        "data_referencia": {
+          "type": "string",
+          "example": "2026-08-31"
+        },
+        "valor_m3": {
+          "type": "number",
+          "example": 10
+        },
+        "inicio_leituras": {
+          "type": "string",
+          "example": "2026-08-31"
+        },
+        "total_apartamentos": {
+          "type": "number",
+          "example": 2
+        },
+        "total_finalizadas": {
+          "type": "number",
+          "example": 1
+        },
+        "completa": {
+          "type": "boolean",
+          "example": false
+        },
+        "proximo_apartamento": {
+          "type": "object",
+          "properties": {
+            "id_apartamento": {
+              "type": "number",
+              "example": 2
+            },
+            "numero": {
+              "type": "string",
+              "example": "102"
+            },
+            "bloco": {
+              "type": "string",
+              "example": "A"
+            }
+          }
+        },
+        "valor_conta": {
+          "type": "number",
+          "example": 150
+        },
+        "total_consumo": {
+          "type": "number",
+          "example": 50
+        },
+        "diferenca": {
+          "type": "number",
+          "example": 100
+        },
+        "apartamentos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id_apartamento": {
+                "type": "number",
+                "example": 1
+              },
+              "numero": {
+                "type": "string",
+                "example": "101"
+              },
+              "bloco": {
+                "type": "string",
+                "example": "A"
+              },
+              "data_cadastro": {
+                "type": "string",
+                "example": "2026-06-01"
+              },
+              "situacao": {
+                "type": "string",
+                "example": "FINALIZADA"
+              },
+              "leitura": {
+                "type": "object",
+                "properties": {
+                  "id_leitura_gas": {
+                    "type": "number",
+                    "example": 5
+                  },
+                  "id_despesa": {
+                    "type": "number",
+                    "example": 4
+                  },
+                  "id_apartamento": {
+                    "type": "number",
+                    "example": 1
+                  },
+                  "numero": {
+                    "type": "string",
+                    "example": "101"
+                  },
+                  "bloco": {
+                    "type": "string",
+                    "example": "A"
+                  },
+                  "data_leitura": {
+                    "type": "string",
+                    "example": "2026-08-31"
+                  },
+                  "leitura_anterior": {
+                    "type": "number",
+                    "example": 1256.5
+                  },
+                  "leitura_atual": {
+                    "type": "number",
+                    "example": 1261.5
+                  },
+                  "consumo": {
+                    "type": "number",
+                    "example": 5
+                  },
+                  "valor_m3": {
+                    "type": "number",
+                    "example": 10
+                  },
+                  "valor": {
+                    "type": "number",
+                    "example": 50
+                  },
+                  "troca_relogio": {
+                    "type": "boolean",
+                    "example": false
+                  },
+                  "finalizada": {
+                    "type": "boolean",
+                    "example": true
+                  }
+                }
+              },
+              "ultima_leitura_finalizada": {
+                "type": "object",
+                "properties": {
+                  "id_apartamento": {
+                    "type": "number",
+                    "example": 1
+                  },
+                  "leitura_atual": {
+                    "type": "number",
+                    "example": 1256.5
+                  },
+                  "data_leitura": {
+                    "type": "string",
+                    "example": "2026-07-31"
+                  }
+                }
+              },
+              "leitura_anterior_bloqueada": {
+                "type": "boolean",
+                "example": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "Fatura": {
+      "type": "object",
+      "properties": {
+        "id_fatura": {
+          "type": "number",
+          "example": 1
+        },
+        "id_apartamento": {
+          "type": "number",
+          "example": 1
+        },
+        "numero": {
+          "type": "string",
+          "example": "101"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "mes_referencia": {
+          "type": "number",
+          "example": 6
+        },
+        "ano_referencia": {
+          "type": "number",
+          "example": 2026
+        },
+        "data_geracao": {
+          "type": "string",
+          "example": "2026-07-01"
+        },
+        "status": {
+          "type": "string",
+          "example": "ABERTA"
+        },
+        "valor_total": {
+          "type": "number",
+          "example": 230
+        },
+        "quantidade_itens": {
+          "type": "number",
+          "example": 2
+        }
+      }
+    },
+    "FaturaDetalhe": {
+      "type": "object",
+      "properties": {
+        "id_fatura": {
+          "type": "number",
+          "example": 1
+        },
+        "id_apartamento": {
+          "type": "number",
+          "example": 1
+        },
+        "numero": {
+          "type": "string",
+          "example": "101"
+        },
+        "bloco": {
+          "type": "string",
+          "example": "A"
+        },
+        "mes_referencia": {
+          "type": "number",
+          "example": 6
+        },
+        "ano_referencia": {
+          "type": "number",
+          "example": 2026
+        },
+        "data_geracao": {
+          "type": "string",
+          "example": "2026-07-01"
+        },
+        "status": {
+          "type": "string",
+          "example": "ABERTA"
+        },
+        "valor_total": {
+          "type": "number",
+          "example": 230
+        },
+        "itens": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id_item_fatura": {
+                "type": "number",
+                "example": 3
+              },
+              "id_despesa": {
+                "type": "number",
+                "example": 2
+              },
+              "descricao": {
+                "type": "string",
+                "example": "Gás - consumo 8 m³"
+              },
+              "valor": {
+                "type": "number",
+                "example": 80
+              },
+              "avulso": {
+                "type": "boolean",
+                "example": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "GerarFaturas": {
+      "type": "object",
+      "properties": {
+        "mes": {
+          "type": "number",
+          "example": 6
+        },
+        "ano": {
+          "type": "number",
+          "example": 2026
+        }
+      }
+    },
+    "ItemAvulso": {
+      "type": "object",
+      "properties": {
+        "descricao": {
+          "type": "string",
+          "example": "Multa por barulho"
+        },
+        "valor": {
+          "type": "number",
+          "example": 50
+        }
+      }
+    },
+    "Receita": {
+      "type": "object",
+      "properties": {
+        "id_receita": {
+          "type": "number",
+          "example": 1
+        },
+        "descricao": {
+          "type": "string",
+          "example": "Pagamento fatura 06/2026 - Apto 101"
+        },
+        "valor": {
+          "type": "number",
+          "example": 230
+        },
+        "data_recebimento": {
+          "type": "string",
+          "example": "2026-07-05"
+        },
+        "observacao": {}
+      }
+    },
+    "ReceitaEntrada": {
+      "type": "object",
+      "properties": {
+        "descricao": {
+          "type": "string",
+          "example": "Pagamento fatura 06/2026 - Apto 101"
+        },
+        "valor": {
+          "type": "number",
+          "example": 230
+        },
+        "data_recebimento": {
+          "type": "string",
+          "example": "2026-07-05"
+        },
+        "observacao": {}
+      }
+    },
+    "Movimentacao": {
+      "type": "object",
+      "properties": {
+        "tipo": {
+          "type": "string",
+          "example": "SAIDA"
+        },
+        "id_origem": {
+          "type": "number",
+          "example": 1
+        },
+        "descricao": {
+          "type": "string",
+          "example": "Energia elétrica - áreas comuns"
+        },
+        "valor": {
+          "type": "number",
+          "example": 300
+        },
+        "data": {
+          "type": "string",
+          "example": "2026-06-30"
+        }
+      }
+    },
+    "Saldo": {
+      "type": "object",
+      "properties": {
+        "total_receitas": {
+          "type": "number",
+          "example": 230
+        },
+        "total_despesas": {
+          "type": "number",
+          "example": 830
+        },
+        "saldo": {
+          "type": "number",
+          "example": -600
+        }
+      }
+    },
+    "SaldoPeriodo": {
+      "type": "object",
+      "properties": {
+        "data_inicio": {
+          "type": "string",
+          "example": "2026-07-01"
+        },
+        "data_fim": {
+          "type": "string",
+          "example": "2026-07-31"
+        },
+        "saldo_anterior": {
+          "type": "number",
+          "example": -480
+        },
+        "entradas": {
+          "type": "number",
+          "example": 230
+        },
+        "saidas": {
+          "type": "number",
+          "example": 200
+        },
+        "saldo_periodo": {
+          "type": "number",
+          "example": 30
+        },
+        "saldo_final": {
+          "type": "number",
+          "example": -450
+        }
+      }
+    }
+  }
+}
