@@ -1,11 +1,55 @@
-## Projeto de Template - Conexão com o Banco de Dados
+# CondoSimples API
 
-Para usar esse repositório como template para criar o seu acesse: 
+API REST do **CondoSimples** — Sistema de Autogestão Condominial.
+
+TCC II de Sistemas de Informação — Acadêmico: Edivan Mayolo · Orientador: Gabriel Luiz Kunz
+
+Feita com Node.js, Express e PostgreSQL (`pg`, SQL escrito à mão), a partir do `api-template` usado nas aulas.
+
+## Instruções
+
+1. Crie o banco `condosimples` no PostgreSQL (versão 15 ou superior) com o script de criação do banco do TCC.
+
+2. Crie o arquivo `.env` na raiz do projeto:
 
 ```
-https://github.com/new?template_name=api-template&template_owner=kunzgabriel
+PORT=3000
+POSTGRES_USER=
+POSTGRES_HOST=
+POSTGRES_DB=condosimples
+POSTGRES_PASS=
+POSTGRES_PORT=5432
+
+JWT_SECRET=
+JWT_EXPIRES_IN=8h
 ```
 
-Esse procedimento vai criar um repositório igual ao template, já vinculado ao seu github.
+3. Na pasta do projeto, execute:
 
-Posteriormente utilize o `git clone`.
+```bash
+npm install
+npm run dev
+```
+
+## Documentação
+
+Com a API rodando, a documentação das rotas (Swagger) fica em:
+
+```
+http://localhost:3000/api-docs
+```
+
+Na própria página está explicado como fazer o login e testar as rotas.
+
+## Estrutura
+
+```
+src/
+  configs/      conexão com o banco e configuração do Swagger
+  routers/      rotas (URL + permissão)
+  controllers/  recebem a requisição e devolvem a resposta
+  services/     regras de negócio e SQL
+  middlewares/  login (token) e tratamento de erros
+  utils/        funções de apoio
+  docs/         documentação gerada pelo Swagger
+```

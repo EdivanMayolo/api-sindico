@@ -6,10 +6,14 @@ const ErroApi = require('../utils/ErroApi');
 // O token é gerado no login (POST /auth/login). Se for válido, os dados do
 // usuário logado ficam em req.usuario para os controllers usarem.
 module.exports = (req, res, next) => {
-  const [tipo, token] = (req.headers.authorization || '').split(' ');
-
-  if (tipo !== 'Bearer' || !token) {
+  if (!req.headers.authorization) {
     throw new ErroApi(401, 'Faça login para acessar esta rota.');
+  }
+
+  // Cabeçalho enviado, mas fora do formato (ex.: token sem a palavra Bearer)
+  const [tipo, token] = req.headers.authorization.split(' ');
+  if (tipo !== 'Bearer' || !token) {
+    throw new ErroApi(401, 'Token em formato inválido. Use: Bearer <token>.');
   }
 
   let payload;
