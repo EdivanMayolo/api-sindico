@@ -20,6 +20,15 @@
         "dev"
       ],
       "port": 9000
+    },
+    {
+      "name": "front-teste",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set API_URL=http://localhost:3999&& npm --prefix ../front-sindico run dev -- --port 9001"
+      ],
+      "port": 9001
     }
   ]
 }
