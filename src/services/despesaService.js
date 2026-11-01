@@ -6,10 +6,21 @@ const apartamentoService = require('./apartamentoService');
 // Colunas devolvidas em todas as consultas de despesa.
 // A despesa é cobrada na fatura do MÊS SEGUINTE ao da data_referencia
 // (gasto de junho → fatura de julho): mes_cobranca e ano_cobranca.
+// em_uso: já lançada em fatura não cancelada ou com leituras de gás — só
+// descrição e observação podem mudar e não pode ser excluída (o Quasar
+// usa para bloquear os campos antes de o usuário tentar).
 const COLUNAS = `id_despesa, descricao, tipo_despesa, valor_total, valor_m3,
                  data_referencia, observacao, ativo,
                  EXTRACT(MONTH FROM data_referencia + INTERVAL '1 month')::INT AS mes_cobranca,
-                 EXTRACT(YEAR  FROM data_referencia + INTERVAL '1 month')::INT AS ano_cobranca`;
+                 EXTRACT(YEAR  FROM data_referencia + INTERVAL '1 month')::INT AS ano_cobranca,
+                 (EXISTS (SELECT 1
+                            FROM T_ITEM_FATURA A, T_FATURA B
+                           WHERE A.id_fatura  = B.id_fatura
+                             AND A.id_despesa = T_DESPESA.id_despesa
+                             AND B.status    <> 'CANCELADA')
+                  OR EXISTS (SELECT 1
+                               FROM T_LEITURA_GAS C
+                              WHERE C.id_despesa = T_DESPESA.id_despesa)) AS em_uso`;
 
 // Valida os campos obrigatórios e devolve os valores na ordem do INSERT/UPDATE.
 // tipo_despesa, valor > 0 e valor_m3 só em VARIAVEL são conferidos pelo banco (ck_).

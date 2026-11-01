@@ -164,7 +164,8 @@ const doc = {
 
     Despesa: {
       id_despesa: 1, descricao: 'Energia elétrica - áreas comuns', tipo_despesa: 'FIXA', valor_total: 300,
-      valor_m3: null, data_referencia: '2026-06-30', observacao: null, ativo: true, mes_cobranca: 7, ano_cobranca: 2026
+      valor_m3: null, data_referencia: '2026-06-30', observacao: null, ativo: true, mes_cobranca: 7, ano_cobranca: 2026,
+      em_uso: false
     },
     DespesaEntrada: {
       descricao: 'Energia elétrica - áreas comuns', tipo_despesa: 'FIXA', valor_total: 300,

@@ -1161,7 +1161,7 @@
           "Despesas"
         ],
         "summary": "Lista as despesas",
-        "description": "Permissão: logado. mes_cobranca/ano_cobranca = mês seguinte ao da data_referencia (gasto de junho é cobrado em julho).",
+        "description": "Permissão: logado. mes_cobranca/ano_cobranca = mês seguinte ao da data_referencia (gasto de junho é cobrado em julho). em_uso = true: já lançada em fatura não cancelada ou com leituras de gás (só descrição e observação podem mudar; não pode ser excluída).",
         "parameters": [
           {
             "name": "mes",
@@ -2913,6 +2913,10 @@
         "ano_cobranca": {
           "type": "number",
           "example": 2026
+        },
+        "em_uso": {
+          "type": "boolean",
+          "example": false
         }
       }
     },

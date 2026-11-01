@@ -7,7 +7,7 @@ const router = express.Router();
 // Consultar: qualquer usuário logado. Gravar: só ADMIN.
 router.get('/', despesaController.listar
   /* #swagger.summary = 'Lista as despesas'
-     #swagger.description = 'Permissão: logado. mes_cobranca/ano_cobranca = mês seguinte ao da data_referencia (gasto de junho é cobrado em julho).'
+     #swagger.description = 'Permissão: logado. mes_cobranca/ano_cobranca = mês seguinte ao da data_referencia (gasto de junho é cobrado em julho). em_uso = true: já lançada em fatura não cancelada ou com leituras de gás (só descrição e observação podem mudar; não pode ser excluída).'
      #swagger.parameters['mes'] = { in: 'query', type: 'integer', description: 'Mês da data_referencia (1 a 12)' }
      #swagger.parameters['ano'] = { in: 'query', type: 'integer', description: 'Ano da data_referencia' }
      #swagger.parameters['tipo_despesa'] = { in: 'query', type: 'string', enum: ['FIXA', 'VARIAVEL', 'OUTROS'] }
