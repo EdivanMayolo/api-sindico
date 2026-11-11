@@ -8,7 +8,9 @@ Feita com Node.js, Express e PostgreSQL (`pg`, SQL escrito à mão), a partir do
 
 ## Instruções
 
-1. Crie o banco `condosimples` no PostgreSQL (versão 15 ou superior) com o script de criação do banco do TCC.
+1. Crie o banco `condosimples` no PostgreSQL (versão 15 ou superior) e, conectado a ele, execute os scripts da pasta `src/configs`, nesta ordem:
+   - `banco.sql` — tabelas, função de validação do CPF, triggers e views;
+   - `usuario_inicial.sql` — primeiro usuário ADMIN (`admin@condosimples.com`). A senha não fica no repositório: peça ao autor do projeto e troque no primeiro acesso (menu do usuário → Alterar senha).
 
 2. Crie o arquivo `.env` na raiz do projeto:
 
