@@ -156,7 +156,7 @@ const doc = {
     },
     VinculoDados: {
       id_vinculo: 3, id_pessoa: 2, id_apartamento: 1, tipo_vinculo: 'INQUILINO', reside: true,
-      data_inicio: '2026-03-01', data_fim: null, ativo: true
+      data_inicio: '2026-03-01', data_fim: null, ativo: true, proprietario_encerrado: null
     },
     VinculoEntrada: { id_pessoa: 2, id_apartamento: 1, tipo_vinculo: 'INQUILINO', reside: true, data_inicio: '2026-03-01' },
     VinculoAlteracao: { reside: true, data_inicio: '2026-03-01' },

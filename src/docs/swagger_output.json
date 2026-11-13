@@ -978,7 +978,7 @@
           "Vínculos"
         ],
         "summary": "Cria um vínculo pessoa ↔ apartamento",
-        "description": "Permissão: ADMIN. tipo_vinculo = PROPRIETARIO ou INQUILINO. reside = mora no apartamento. data_inicio opcional (padrão: hoje). Inquilino só em um apartamento por vez (RN03); apto inativo só recebe PROPRIETARIO; pessoa inativa não recebe vínculo.",
+        "description": "Permissão: ADMIN. tipo_vinculo = PROPRIETARIO ou INQUILINO. reside = mora no apartamento (inquilino sempre mora). data_inicio opcional (padrão: hoje). Inquilino só em um apartamento por vez (RN03); apto inativo só recebe PROPRIETARIO; pessoa inativa não recebe vínculo. Apto com proprietário morando não recebe inquilino, e com inquilino ativo o proprietário não pode morar (409). Um único proprietário por apartamento: um novo PROPRIETARIO encerra o atual na data de início do novo (proprietario_encerrado = nome de quem saiu).",
         "parameters": [
           {
             "name": "body",
@@ -1062,7 +1062,7 @@
           "Vínculos"
         ],
         "summary": "Altera um vínculo",
-        "description": "Permissão: ADMIN. Só reside (obrigatório) e data_inicio. Vínculo encerrado não é alterado.",
+        "description": "Permissão: ADMIN. Só reside (obrigatório) e data_inicio. Vínculo encerrado não é alterado. Inquilino sempre mora (reside false → 400); proprietário não pode morar com inquilino ativo (409).",
         "parameters": [
           {
             "name": "id",
@@ -1112,7 +1112,7 @@
           "Vínculos"
         ],
         "summary": "Encerra um vínculo",
-        "description": "Permissão: ADMIN. data_fim opcional (padrão: hoje). Não encerra o último proprietário de um apartamento ativo (409).",
+        "description": "Permissão: ADMIN. data_fim opcional (padrão: hoje). Não encerra o proprietário de um apartamento ativo (409): para trocar o dono, cadastre o novo proprietário.",
         "parameters": [
           {
             "name": "id",
@@ -2827,7 +2827,8 @@
         "ativo": {
           "type": "boolean",
           "example": true
-        }
+        },
+        "proprietario_encerrado": {}
       }
     },
     "VinculoEntrada": {

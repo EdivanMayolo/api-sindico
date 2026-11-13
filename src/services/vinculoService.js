@@ -34,9 +34,36 @@ const buscarPorId = async (id) => {
   return result.rows[0];
 };
 
-// Valida e grava um vínculo. Recebe quem executa o SQL ("executor"):
-//   - db       → gravação simples (POST /vinculos)
-//   - client   → dentro de uma transação (cadastro do apartamento já com o proprietário)
+// Conta os vínculos ativos de um tipo no apartamento (somenteMoradores = só os que residem).
+// semVinculo: id a desconsiderar (o próprio vínculo, na alteração).
+const contarAtivos = async (executor, id_apartamento, tipo_vinculo, somenteMoradores, semVinculo = null) => {
+  const sql = `SELECT COUNT(*)::INT AS quantidade
+                 FROM T_VINCULO_APARTAMENTO
+                WHERE id_apartamento = $1
+                  AND tipo_vinculo   = $2
+                  AND ativo          = TRUE
+                  AND ($3 = FALSE OR reside = TRUE)
+                  AND ($4::INT IS NULL OR id_vinculo <> $4)`;
+  const result = await executor.query(sql, [id_apartamento, tipo_vinculo, somenteMoradores, semVinculo]);
+  return result.rows[0].quantidade;
+};
+
+// Ocupação do apartamento: proprietário morando e inquilino não convivem.
+//   - apto com proprietário morando não recebe inquilino;
+//   - apto com inquilino ativo não aceita proprietário morando (só depois de encerrar o inquilino).
+const validarOcupacao = async (executor, id_apartamento, tipo_vinculo, reside, semVinculo = null) => {
+  if (tipo_vinculo === 'INQUILINO'
+      && await contarAtivos(executor, id_apartamento, 'PROPRIETARIO', true, semVinculo) > 0) {
+    throw new ErroApi(409, 'O apartamento está ocupado pelo proprietário. Para vincular um inquilino, desmarque antes que o proprietário mora no apartamento.');
+  }
+  if (tipo_vinculo === 'PROPRIETARIO' && reside
+      && await contarAtivos(executor, id_apartamento, 'INQUILINO', false, semVinculo) > 0) {
+    throw new ErroApi(409, 'O apartamento tem inquilino ativo. O proprietário só pode morar no apartamento depois que o vínculo do inquilino for encerrado.');
+  }
+};
+
+// Valida e grava um vínculo. Recebe quem executa o SQL ("executor"), sempre o "client"
+// de uma transação: POST /vinculos (troca de proprietário) ou cadastro do apartamento.
 const inserir = async (executor, { id_pessoa, id_apartamento, tipo_vinculo, reside, data_inicio } = {}) => {
   if (!id_pessoa || !id_apartamento || !tipo_vinculo) {
     throw new ErroApi(400, 'Informe a pessoa, o apartamento e o tipo de vínculo.');
@@ -72,16 +99,53 @@ const inserir = async (executor, { id_pessoa, id_apartamento, tipo_vinculo, resi
     throw new ErroApi(409, 'Esta pessoa já possui vínculo ativo com este apartamento.');
   }
 
+  // O inquilino sempre mora no apartamento
+  if (tipo_vinculo === 'INQUILINO') {
+    reside = true;
+  }
+  await validarOcupacao(executor, id_apartamento, tipo_vinculo, reside);
+
+  // Um único proprietário por apartamento: o novo proprietário encerra o anterior
+  // na data de início do novo (troca de dono). O anterior fica no histórico.
+  let proprietarioAnterior = null;
+  if (tipo_vinculo === 'PROPRIETARIO') {
+    const atual = await executor.query(
+      `SELECT A.id_vinculo, A.data_inicio, B.nome,
+              COALESCE($2::DATE, CURRENT_DATE) AS data_troca
+         FROM T_VINCULO_APARTAMENTO A, T_PESSOA B
+        WHERE A.id_pessoa      = B.id_pessoa
+          AND A.id_apartamento = $1
+          AND A.tipo_vinculo   = 'PROPRIETARIO'
+          AND A.ativo          = TRUE`,
+      [id_apartamento, data_inicio]
+    );
+    for (const anterior of atual.rows) {
+      if (anterior.data_troca < anterior.data_inicio) {
+        throw new ErroApi(400, `A data de início do novo proprietário não pode ser anterior ao início do proprietário atual (${anterior.data_inicio.split('-').reverse().join('/')}).`);
+      }
+      await executor.query(
+        `UPDATE T_VINCULO_APARTAMENTO
+            SET ativo    = FALSE,
+                data_fim = $1
+          WHERE id_vinculo = $2`,
+        [anterior.data_troca, anterior.id_vinculo]
+      );
+      proprietarioAnterior = anterior.nome;
+    }
+  }
+
   // RN03 (inquilino em um só apto) e RN04 (tipo válido) são garantidas pelo banco
   const sql = `INSERT INTO T_VINCULO_APARTAMENTO (id_pessoa, id_apartamento, tipo_vinculo, reside, data_inicio)
                VALUES ($1, $2, $3, COALESCE($4, FALSE), COALESCE($5, CURRENT_DATE))
                RETURNING id_vinculo, id_pessoa, id_apartamento, tipo_vinculo, reside, data_inicio, data_fim, ativo`;
   const result = await executor.query(sql, [id_pessoa, id_apartamento, tipo_vinculo, reside, data_inicio]);
-  return result.rows[0];
+  // proprietario_encerrado: nome do dono anterior (para a tela avisar), ou null
+  return { ...result.rows[0], proprietario_encerrado: proprietarioAnterior };
 };
 
+// Transação: na troca de proprietário, encerrar o anterior e gravar o novo andam juntos
 const criar = async (dados) => {
-  return inserir(db, dados);
+  return db.transacao((client) => inserir(client, dados));
 };
 
 // Só corrige quem mora (reside) e a data de início de um vínculo ativo.
@@ -94,6 +158,10 @@ const alterar = async (id, { reside, data_inicio } = {}) => {
   if (!vinculo.ativo) {
     throw new ErroApi(400, 'Vínculo encerrado não pode ser alterado.');
   }
+  if (vinculo.tipo_vinculo === 'INQUILINO' && !reside) {
+    throw new ErroApi(400, 'O inquilino sempre mora no apartamento. Para tirá-lo, encerre o vínculo.');
+  }
+  await validarOcupacao(db, vinculo.id_apartamento, vinculo.tipo_vinculo, reside, vinculo.id_vinculo);
 
   const sql = `UPDATE T_VINCULO_APARTAMENTO
                   SET reside      = $1,
@@ -126,7 +194,7 @@ const encerrar = async (id, { data_fim } = {}) => {
     const apto = (await db.query(sql, [vinculo.id_apartamento, id])).rows[0];
 
     if (apto.ativo && Number(apto.outros_proprietarios) === 0) {
-      throw new ErroApi(409, 'Este é o único proprietário ativo do apartamento. Cadastre o novo proprietário antes de encerrar este vínculo.');
+      throw new ErroApi(409, 'Todo apartamento ativo precisa de um proprietário. Para trocar o dono, cadastre o novo proprietário: o vínculo deste será encerrado automaticamente.');
     }
   }
 
