@@ -211,6 +211,9 @@ const doc = {
     FaturaDetalhe: {
       id_fatura: 1, id_apartamento: 1, numero: '101', bloco: 'A', mes_referencia: 6, ano_referencia: 2026,
       data_geracao: '2026-07-01', status: 'ABERTA', valor_total: 230,
+      numero_documento: '000001', data_vencimento: '2026-07-15',
+      cobranca: { multa_percentual: 2, multa_valor: 4.6, juros_mes_percentual: 1, juros_dia_valor: 0.08 },
+      pagador: { nome: 'Maria Oliveira', cpf: '11144477735', endereco: null, tipo_vinculo: 'INQUILINO' },
       itens: [
         { id_item_fatura: 1, id_despesa: 1, descricao: 'Energia elétrica - áreas comuns', valor: 150, avulso: false },
         { id_item_fatura: 3, id_despesa: 2, descricao: 'Gás - consumo 8 m³', valor: 80, avulso: false }

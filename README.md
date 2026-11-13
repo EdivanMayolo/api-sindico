@@ -26,6 +26,14 @@ JWT_SECRET=
 JWT_EXPIRES_IN=8h
 ```
 
+   Opcional — dados de cobrança do esboço da fatura (sem estas linhas valem os padrões: vencimento no dia 15, multa de 2% e juros de 1% ao mês):
+
+```
+FATURA_VENCIMENTO_DIA=15
+FATURA_MULTA_PERCENTUAL=2
+FATURA_JUROS_MES_PERCENTUAL=1
+```
+
 3. Na pasta do projeto, execute:
 
 ```bash

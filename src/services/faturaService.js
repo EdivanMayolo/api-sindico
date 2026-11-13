@@ -9,8 +9,17 @@ const despesaService = require('./despesaService');
 // cobrada em julho). O valor_total é calculado pelo banco (trigger
 // trg_atualiza_total_fatura) a cada item incluído ou removido.
 
+// Dados de cobrança do esboço (vencimento, multa e juros). Valores padrão fixos aqui;
+// para trocar sem mexer no código, informar no .env (o dia vai de 1 a 28).
+const VENCIMENTO_DIA = Number(process.env.FATURA_VENCIMENTO_DIA || 15);
+const MULTA_PERCENTUAL = Number(process.env.FATURA_MULTA_PERCENTUAL || 2);
+const JUROS_MES_PERCENTUAL = Number(process.env.FATURA_JUROS_MES_PERCENTUAL || 1);
+
+// Arredonda para centavos
+const centavos = (valor) => Math.round(valor * 100) / 100;
+
 // 6 e 2026 → '06/2026'
-const mesAno = (mes, ano) => `${String(mes).padStart(2, '0')}/${ano}`;
+const mesAno =(mes, ano) => `${String(mes).padStart(2, '0')}/${ano}`;
 
 // 'AAAA-MM-DD' → '06/2026'
 const mesAnoDaData = (data) => `${data.slice(5, 7)}/${data.slice(0, 4)}`;
@@ -38,19 +47,46 @@ const listar = async ({ id_apartamento, mes, ano, status } = {}) => {
   return result.rows;
 };
 
-// Fatura com o apartamento e todos os itens
+// Fatura com o apartamento, os dados de cobrança, o pagador e todos os itens.
+// numero_documento = número da fatura com zeros (decisão 3A).
+// data_vencimento  = dia VENCIMENTO_DIA do mês de cobrança, o seguinte ao de referência (decisão 2).
 const buscarPorId = async (id) => {
   const sql = `SELECT A.id_fatura, A.id_apartamento, B.numero, B.bloco,
                       A.mes_referencia, A.ano_referencia, A.data_geracao,
-                      A.status, A.valor_total
+                      A.status, A.valor_total,
+                      LPAD(A.id_fatura::TEXT, 6, '0') AS numero_documento,
+                      (MAKE_DATE(A.ano_referencia, A.mes_referencia, $2) + INTERVAL '1 month')::DATE
+                        AS data_vencimento
                  FROM T_FATURA A, T_APARTAMENTO B
                 WHERE A.id_apartamento = B.id_apartamento
                   AND A.id_fatura      = $1`;
-  const result = await db.query(sql, [id]);
+  const result = await db.query(sql, [id, VENCIMENTO_DIA]);
   if (result.rowCount === 0) {
     throw new ErroApi(404, 'Fatura não encontrada.');
   }
   const fatura = result.rows[0];
+
+  // Decisão 4A: multa e juros só como instrução do esboço (o sistema não cobra o atraso)
+  fatura.cobranca = {
+    multa_percentual: MULTA_PERCENTUAL,
+    multa_valor: centavos(fatura.valor_total * MULTA_PERCENTUAL / 100),
+    juros_mes_percentual: JUROS_MES_PERCENTUAL,
+    juros_dia_valor: centavos(fatura.valor_total * JUROS_MES_PERCENTUAL / 100 / 30),
+  };
+
+  // Decisão 5A: pagador = o inquilino ativo, se houver; senão o proprietário
+  // (entre vários, primeiro quem mora no apartamento). Vínculos ativos de hoje.
+  const pagador = await db.query(
+    `SELECT B.nome, B.cpf, B.endereco, A.tipo_vinculo
+       FROM T_VINCULO_APARTAMENTO A, T_PESSOA B
+      WHERE A.id_pessoa      = B.id_pessoa
+        AND A.id_apartamento = $1
+        AND A.ativo          = TRUE
+      ORDER BY (A.tipo_vinculo = 'INQUILINO') DESC, A.reside DESC, B.nome
+      LIMIT 1`,
+    [fatura.id_apartamento]
+  );
+  fatura.pagador = pagador.rows[0] || null;
 
   // avulso = item sem despesa ligada (ex.: multa)
   const itens = await db.query(

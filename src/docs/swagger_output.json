@@ -3349,6 +3349,53 @@
           "type": "number",
           "example": 230
         },
+        "numero_documento": {
+          "type": "string",
+          "example": "000001"
+        },
+        "data_vencimento": {
+          "type": "string",
+          "example": "2026-07-15"
+        },
+        "cobranca": {
+          "type": "object",
+          "properties": {
+            "multa_percentual": {
+              "type": "number",
+              "example": 2
+            },
+            "multa_valor": {
+              "type": "number",
+              "example": 4.6
+            },
+            "juros_mes_percentual": {
+              "type": "number",
+              "example": 1
+            },
+            "juros_dia_valor": {
+              "type": "number",
+              "example": 0.08
+            }
+          }
+        },
+        "pagador": {
+          "type": "object",
+          "properties": {
+            "nome": {
+              "type": "string",
+              "example": "Maria Oliveira"
+            },
+            "cpf": {
+              "type": "string",
+              "example": "11144477735"
+            },
+            "endereco": {},
+            "tipo_vinculo": {
+              "type": "string",
+              "example": "INQUILINO"
+            }
+          }
+        },
         "itens": {
           "type": "array",
           "items": {
