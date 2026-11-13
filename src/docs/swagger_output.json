@@ -1226,7 +1226,7 @@
           "Despesas"
         ],
         "summary": "Cadastra uma despesa",
-        "description": "Permissão: ADMIN. tipo_despesa = FIXA, VARIAVEL ou OUTROS. valor_m3 (preço do m³) só em despesa VARIAVEL: despesa com valor_m3 é a despesa de gás.",
+        "description": "Permissão: ADMIN. tipo_despesa = FIXA, VARIAVEL ou OUTROS. valor_m3 (preço do m³) só em despesa VARIAVEL: despesa com valor_m3 é a despesa de gás. Mês com faturas já geradas (e meses anteriores) não recebe despesa (409).",
         "parameters": [
           {
             "name": "body",
@@ -1310,7 +1310,7 @@
           "Despesas"
         ],
         "summary": "Altera uma despesa",
-        "description": "Permissão: ADMIN. Despesa já em fatura não cancelada ou com leituras de gás: só descricao e observacao podem mudar (409).",
+        "description": "Permissão: ADMIN. Despesa já em fatura não cancelada ou com leituras de gás: só descricao e observacao podem mudar (409). Não pode mudar a data para um mês com faturas já geradas (409).",
         "parameters": [
           {
             "name": "id",

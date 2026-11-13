@@ -31,6 +31,21 @@ const prepararDados = ({ descricao, tipo_despesa, valor_total, valor_m3, data_re
   return [textoOuNulo(descricao), tipo_despesa, valor_total, valor_m3 ?? null, data_referencia, textoOuNulo(observacao)];
 };
 
+// Mês fechado não recebe despesa: se as faturas de um mês já foram geradas (não canceladas),
+// nenhuma despesa (de qualquer tipo) pode ter data de referência nesse mês nem antes dele.
+const validarMesAberto = async (data_referencia) => {
+  const sql = `SELECT TO_CHAR(U.ultimo, 'MM/YYYY')                       AS ultimo,
+                      TO_CHAR(U.ultimo + INTERVAL '1 month', 'MM/YYYY') AS proximo,
+                      ($1::DATE < U.ultimo + INTERVAL '1 month')         AS fechado
+                 FROM (SELECT MAX(MAKE_DATE(ano_referencia, mes_referencia, 1)) AS ultimo
+                         FROM T_FATURA
+                        WHERE status <> 'CANCELADA') U`;
+  const { ultimo, proximo, fechado } = (await db.query(sql, [data_referencia])).rows[0];
+  if (fechado) {
+    throw new ErroApi(409, `As faturas de ${ultimo} já foram geradas: não é possível lançar despesa nesse mês nem em meses anteriores. Use uma data de referência a partir de ${proximo}.`);
+  }
+};
+
 // Onde a despesa já foi usada:
 //   itens_validos    → cobrada em fatura que vale (não cancelada)
 //   itens_cancelados → só aparece em faturas canceladas
@@ -85,10 +100,13 @@ const buscarPorId = async (id) => {
 };
 
 const criar = async (dados = {}) => {
+  const valores = prepararDados(dados);
+  await validarMesAberto(valores[4]);
+
   const sql = `INSERT INTO T_DESPESA (descricao, tipo_despesa, valor_total, valor_m3, data_referencia, observacao)
                VALUES ($1, $2, $3, $4, $5, $6)
                RETURNING ${COLUNAS}`;
-  const result = await db.query(sql, prepararDados(dados));
+  const result = await db.query(sql, valores);
   return result.rows[0];
 };
 
@@ -108,6 +126,11 @@ const alterar = async (id, dados = {}) => {
     if (mudouValor) {
       throw new ErroApi(409, 'Despesa já lançada em fatura ou com leituras de gás: só a descrição e a observação podem ser alteradas.');
     }
+  }
+
+  // Mudar a data para um mês já fechado também não pode
+  if (atual.data_referencia !== valores[4]) {
+    await validarMesAberto(valores[4]);
   }
 
   const sql = `UPDATE T_DESPESA

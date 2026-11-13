@@ -26,13 +26,13 @@ router.get('/:id/rateio', despesaController.previaRateio
 );
 router.post('/', somenteAdmin, despesaController.criar
   /* #swagger.summary = 'Cadastra uma despesa'
-     #swagger.description = 'Permissão: ADMIN. tipo_despesa = FIXA, VARIAVEL ou OUTROS. valor_m3 (preço do m³) só em despesa VARIAVEL: despesa com valor_m3 é a despesa de gás.'
+     #swagger.description = 'Permissão: ADMIN. tipo_despesa = FIXA, VARIAVEL ou OUTROS. valor_m3 (preço do m³) só em despesa VARIAVEL: despesa com valor_m3 é a despesa de gás. Mês com faturas já geradas (e meses anteriores) não recebe despesa (409).'
      #swagger.parameters['body'] = { in: 'body', required: true, schema: { $ref: '#/definitions/DespesaEntrada' } }
      #swagger.responses[201] = { description: 'Despesa cadastrada', schema: { status: 'ok', data: { $ref: '#/definitions/Despesa' } } } */
 );
 router.put('/:id', somenteAdmin, despesaController.alterar
   /* #swagger.summary = 'Altera uma despesa'
-     #swagger.description = 'Permissão: ADMIN. Despesa já em fatura não cancelada ou com leituras de gás: só descricao e observacao podem mudar (409).'
+     #swagger.description = 'Permissão: ADMIN. Despesa já em fatura não cancelada ou com leituras de gás: só descricao e observacao podem mudar (409). Não pode mudar a data para um mês com faturas já geradas (409).'
      #swagger.parameters['body'] = { in: 'body', required: true, schema: { $ref: '#/definitions/DespesaEntrada' } }
      #swagger.responses[200] = { description: 'Despesa alterada', schema: { status: 'ok', data: { $ref: '#/definitions/Despesa' } } } */
 );
