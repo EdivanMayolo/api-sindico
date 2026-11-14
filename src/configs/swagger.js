@@ -167,6 +167,10 @@ const doc = {
       valor_m3: null, data_referencia: '2026-06-30', observacao: null, ativo: true, mes_cobranca: 7, ano_cobranca: 2026,
       em_uso: false
     },
+    DespesaPrevista: {
+      id_origem: 7, descricao: 'Limpeza', tipo_despesa: 'FIXA', valor_total: 300, valor_m3: null,
+      data_referencia: '2026-12-10', observacao: null, mes_cobranca: 1, ano_cobranca: 2027
+    },
     DespesaEntrada: {
       descricao: 'Energia elétrica - áreas comuns', tipo_despesa: 'FIXA', valor_total: 300,
       valor_m3: null, data_referencia: '2026-06-30', observacao: null

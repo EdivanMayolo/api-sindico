@@ -88,6 +88,41 @@ const listar = async ({ mes, ano, tipo_despesa, ativo } = {}) => {
   return result.rows;
 };
 
+// Despesas fixas PREVISTAS para um mês (não grava nada): as FIXA ativas do mês anterior,
+// com o valor de agora, no mesmo dia. São as que a geração das faturas do mês anterior vai
+// lançar neste mês (ver faturaService.gerar). Só existem enquanto o mês anterior não foi
+// gerado; depois disso a despesa já é real. A que já tem fixa com a mesma descrição no mês não entra.
+const listarPrevistas = async ({ mes, ano } = {}) => {
+  if (!(Number(mes) >= 1 && Number(mes) <= 12) || !ano) {
+    throw new ErroApi(400, 'Informe o mês (1 a 12) e o ano.');
+  }
+  const sql = `SELECT A.id_despesa AS id_origem, A.descricao, A.tipo_despesa, A.valor_total, A.valor_m3,
+                      (A.data_referencia + INTERVAL '1 month')::DATE AS data_referencia,
+                      A.observacao,
+                      EXTRACT(MONTH FROM A.data_referencia + INTERVAL '2 month')::INT AS mes_cobranca,
+                      EXTRACT(YEAR  FROM A.data_referencia + INTERVAL '2 month')::INT AS ano_cobranca
+                 FROM T_DESPESA A
+                WHERE A.tipo_despesa = 'FIXA'
+                  AND A.ativo        = TRUE
+                  AND A.data_referencia >= MAKE_DATE($2::INT, $1::INT, 1) - INTERVAL '1 month'
+                  AND A.data_referencia <  MAKE_DATE($2::INT, $1::INT, 1)
+                  AND NOT EXISTS (SELECT 1
+                                    FROM T_DESPESA B
+                                   WHERE B.tipo_despesa = 'FIXA'
+                                     AND B.ativo        = TRUE
+                                     AND LOWER(TRIM(B.descricao)) = LOWER(TRIM(A.descricao))
+                                     AND B.data_referencia >= MAKE_DATE($2::INT, $1::INT, 1)
+                                     AND B.data_referencia <  MAKE_DATE($2::INT, $1::INT, 1) + INTERVAL '1 month')
+                  AND NOT EXISTS (SELECT 1
+                                    FROM T_FATURA F
+                                   WHERE F.status <> 'CANCELADA'
+                                     AND MAKE_DATE(F.ano_referencia, F.mes_referencia, 1)
+                                         >= MAKE_DATE($2::INT, $1::INT, 1) - INTERVAL '1 month')
+                ORDER BY A.data_referencia, A.descricao`;
+  const result = await db.query(sql, [mes, ano]);
+  return result.rows;
+};
+
 const buscarPorId = async (id) => {
   const sql = `SELECT ${COLUNAS}
                  FROM T_DESPESA
@@ -214,6 +249,7 @@ const previaRateio = async (id) => {
 
 module.exports = {
   listar,
+  listarPrevistas,
   buscarPorId,
   criar,
   alterar,

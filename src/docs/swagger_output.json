@@ -1264,6 +1264,59 @@
         ]
       }
     },
+    "/despesas/previstas": {
+      "get": {
+        "tags": [
+          "Despesas"
+        ],
+        "summary": "Despesas fixas previstas para o mês",
+        "description": "Permissão: logado. Não grava nada. As despesas FIXA ativas do mês anterior (mesmo dia, valor atual), que serão lançadas neste mês quando as faturas do mês anterior forem geradas. Vazio depois dessa geração (a despesa já é real) e quando o mês já tem fixa com a mesma descrição. id_origem = despesa do mês anterior.",
+        "parameters": [
+          {
+            "name": "mes",
+            "in": "query",
+            "type": "integer",
+            "required": true,
+            "description": "Mês (1 a 12)"
+          },
+          {
+            "name": "ano",
+            "in": "query",
+            "type": "integer",
+            "required": true,
+            "description": "Ano"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Despesas previstas",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "example": "ok"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/DespesaPrevista"
+                  }
+                }
+              },
+              "xml": {
+                "name": "main"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/despesas/{id}": {
       "get": {
         "tags": [
@@ -1811,7 +1864,7 @@
           "Faturas"
         ],
         "summary": "Gera as faturas do mês",
-        "description": "Permissão: ADMIN. Gera de uma vez a fatura de todos os apartamentos do mês, só a partir do 1º dia do mês seguinte. Entram as despesas pendentes até o fim do mês (rateio igual) e o gás (um item por leitura finalizada). Mês já gerado → 409. Leituras de gás incompletas → 409.",
+        "description": "Permissão: ADMIN. Gera de uma vez a fatura de todos os apartamentos do mês, só a partir do 1º dia do mês seguinte. Entram as despesas pendentes até o fim do mês (rateio igual) e o gás (um item por leitura finalizada). Mês já gerado → 409. Leituras de gás incompletas → 409. Na mesma transação, as despesas FIXA ativas do mês são lançadas no mês seguinte (mesmo dia e valor; não duplica a mesma descrição).",
         "parameters": [
           {
             "name": "body",
@@ -2918,6 +2971,41 @@
         "em_uso": {
           "type": "boolean",
           "example": false
+        }
+      }
+    },
+    "DespesaPrevista": {
+      "type": "object",
+      "properties": {
+        "id_origem": {
+          "type": "number",
+          "example": 7
+        },
+        "descricao": {
+          "type": "string",
+          "example": "Limpeza"
+        },
+        "tipo_despesa": {
+          "type": "string",
+          "example": "FIXA"
+        },
+        "valor_total": {
+          "type": "number",
+          "example": 300
+        },
+        "valor_m3": {},
+        "data_referencia": {
+          "type": "string",
+          "example": "2026-12-10"
+        },
+        "observacao": {},
+        "mes_cobranca": {
+          "type": "number",
+          "example": 1
+        },
+        "ano_cobranca": {
+          "type": "number",
+          "example": 2027
         }
       }
     },

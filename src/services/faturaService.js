@@ -226,6 +226,34 @@ const gerar = async ({ mes, ano } = {}) => {
         }
       }
     }
+
+    // 4. Despesas fixas se repetem no mês seguinte: as FIXA ativas deste mês, com o valor
+    //    de agora (se foi ajustado, vai o valor novo), no mesmo dia do mês seguinte
+    //    (31/10 → 30/11). Despesa excluída não está aqui, então não se repete.
+    //    Não copia se o mês seguinte já tem uma fixa com a mesma descrição, nem se as
+    //    faturas dele (ou de um mês depois) já foram geradas: mês fechado não recebe despesa.
+    await client.query(
+      `INSERT INTO T_DESPESA (descricao, tipo_despesa, valor_total, data_referencia, observacao)
+       SELECT A.descricao, A.tipo_despesa, A.valor_total,
+              (A.data_referencia + INTERVAL '1 month')::DATE, A.observacao
+         FROM T_DESPESA A
+        WHERE A.tipo_despesa    = 'FIXA'
+          AND A.ativo           = TRUE
+          AND A.data_referencia BETWEEN MAKE_DATE($2::INT, $1::INT, 1) AND $3::DATE
+          AND NOT EXISTS (SELECT 1
+                            FROM T_DESPESA B
+                           WHERE B.tipo_despesa = 'FIXA'
+                             AND B.ativo        = TRUE
+                             AND LOWER(TRIM(B.descricao)) = LOWER(TRIM(A.descricao))
+                             AND B.data_referencia BETWEEN $3::DATE + 1
+                                 AND (MAKE_DATE($2::INT, $1::INT, 1) + INTERVAL '2 month - 1 day')::DATE)
+          AND NOT EXISTS (SELECT 1
+                            FROM T_FATURA F
+                           WHERE F.status <> 'CANCELADA'
+                             AND MAKE_DATE(F.ano_referencia, F.mes_referencia, 1)
+                                 >= MAKE_DATE($2::INT, $1::INT, 1) + INTERVAL '1 month')`,
+      [mes, ano, datas.fim]
+    );
   });
 
   // Devolve as faturas válidas do mês (as canceladas continuam na consulta geral)

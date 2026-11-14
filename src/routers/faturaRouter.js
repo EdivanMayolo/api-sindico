@@ -21,7 +21,7 @@ router.get('/:id', faturaController.buscarPorId
 );
 router.post('/gerar', somenteAdmin, faturaController.gerar
   /* #swagger.summary = 'Gera as faturas do mês'
-     #swagger.description = 'Permissão: ADMIN. Gera de uma vez a fatura de todos os apartamentos do mês, só a partir do 1º dia do mês seguinte. Entram as despesas pendentes até o fim do mês (rateio igual) e o gás (um item por leitura finalizada). Mês já gerado → 409. Leituras de gás incompletas → 409.'
+     #swagger.description = 'Permissão: ADMIN. Gera de uma vez a fatura de todos os apartamentos do mês, só a partir do 1º dia do mês seguinte. Entram as despesas pendentes até o fim do mês (rateio igual) e o gás (um item por leitura finalizada). Mês já gerado → 409. Leituras de gás incompletas → 409. Na mesma transação, as despesas FIXA ativas do mês são lançadas no mês seguinte (mesmo dia e valor; não duplica a mesma descrição).'
      #swagger.parameters['body'] = { in: 'body', required: true, schema: { $ref: '#/definitions/GerarFaturas' } }
      #swagger.responses[201] = { description: 'Faturas geradas', schema: { status: 'ok', data: [{ $ref: '#/definitions/Fatura' }] } } */
 );

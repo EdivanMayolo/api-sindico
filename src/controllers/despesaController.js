@@ -6,6 +6,12 @@ const listar = async (req, res) => {
   return res.status(200).json({ status: 'ok', data });
 };
 
+// Fixas previstas para o mês (?mes=&ano=): não grava nada
+const listarPrevistas = async (req, res) => {
+  const data = await despesaService.listarPrevistas(req.query);
+  return res.status(200).json({ status: 'ok', data });
+};
+
 const buscarPorId = async (req, res) => {
   const data = await despesaService.buscarPorId(req.params.id);
   return res.status(200).json({ status: 'ok', data });
@@ -34,6 +40,7 @@ const previaRateio = async (req, res) => {
 
 module.exports = {
   listar,
+  listarPrevistas,
   buscarPorId,
   criar,
   alterar,

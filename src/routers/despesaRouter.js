@@ -14,6 +14,14 @@ router.get('/', despesaController.listar
      #swagger.parameters['ativo'] = { in: 'query', type: 'boolean', description: 'true = só ativas; false = só inativas' }
      #swagger.responses[200] = { description: 'Lista de despesas', schema: { status: 'ok', data: [{ $ref: '#/definitions/Despesa' }] } } */
 );
+// Antes do /:id, senão "previstas" seria lido como id
+router.get('/previstas', despesaController.listarPrevistas
+  /* #swagger.summary = 'Despesas fixas previstas para o mês'
+     #swagger.description = 'Permissão: logado. Não grava nada. As despesas FIXA ativas do mês anterior (mesmo dia, valor atual), que serão lançadas neste mês quando as faturas do mês anterior forem geradas. Vazio depois dessa geração (a despesa já é real) e quando o mês já tem fixa com a mesma descrição. id_origem = despesa do mês anterior.'
+     #swagger.parameters['mes'] = { in: 'query', type: 'integer', required: true, description: 'Mês (1 a 12)' }
+     #swagger.parameters['ano'] = { in: 'query', type: 'integer', required: true, description: 'Ano' }
+     #swagger.responses[200] = { description: 'Despesas previstas', schema: { status: 'ok', data: [{ $ref: '#/definitions/DespesaPrevista' }] } } */
+);
 router.get('/:id', despesaController.buscarPorId
   /* #swagger.summary = 'Busca uma despesa'
      #swagger.description = 'Permissão: logado.'
