@@ -70,9 +70,11 @@ const doc = {
     version: '1.0.0',
     description: descricao
   },
-  host: `localhost:${process.env.PORT}`,
+  // Endereço usado pelo "Try it out". No computador: localhost:PORTA (http).
+  // Na nuvem (Render): variável SWAGGER_HOST com o endereço da API, que usa https.
+  host: process.env.SWAGGER_HOST || `localhost:${process.env.PORT}`,
   basePath: '/',
-  schemes: ['http'],
+  schemes: [process.env.SWAGGER_HOST ? 'https' : 'http'],
   consumes: ['application/json'],
   produces: ['application/json'],
   // Botão Authorize (decisão 4A). As rotas que exigem login recebem

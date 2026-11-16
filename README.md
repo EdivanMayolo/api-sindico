@@ -51,6 +51,22 @@ http://localhost:3000/api-docs
 
 Na própria página está explicado como fazer o login e testar as rotas.
 
+## Publicação na nuvem (Render)
+
+A API roda como **Web Service** (`npm install` / `npm start`), com as mesmas variáveis do `.env` e mais estas:
+
+```
+SWAGGER_HOST=endereco-da-api.onrender.com
+TZ=America/Sao_Paulo
+```
+
+- `SWAGGER_HOST` faz o "Try it out" do Swagger usar o endereço da nuvem (com https).
+- No banco, o fuso também deve ser o de Brasília, pois as datas automáticas (ex.: data da leitura de gás) usam `CURRENT_DATE`:
+
+```sql
+ALTER DATABASE nome_do_banco SET timezone TO 'America/Sao_Paulo';
+```
+
 ## Estrutura
 
 ```
